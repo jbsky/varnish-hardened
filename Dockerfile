@@ -18,7 +18,8 @@ RUN --mount=type=cache,target=/var/cache/apk \
     apk add --no-cache \
         build-base autoconf automake libtool pkgconfig \
         python3 py3-docutils py3-sphinx \
-        pcre2-dev libedit-dev ncurses-dev jemalloc-dev linux-headers
+        pcre2-dev libedit-dev ncurses-dev jemalloc-dev linux-headers \
+        libexecinfo-dev
 
 # Build TCC from source (mob branch — only the compiler binary, not libtcc1)
 # libtcc1.a/bcheck incompatible with musl 1.2+ — not needed for VCL .so compilation
@@ -71,7 +72,7 @@ FROM alpine:${ALPINE_VERSION} AS prep
 # Runtime libraries only (no compilers, no package manager in final)
 RUN --mount=type=cache,target=/var/cache/apk \
     apk add --no-cache \
-        pcre2 libedit ncurses-libs jemalloc \
+        pcre2 libedit ncurses-libs jemalloc libexecinfo \
         musl-dev \
         tini-static ca-certificates tzdata
 
@@ -130,6 +131,7 @@ COPY --link --from=prep /usr/lib/libpcre2-8.so* /usr/lib/
 COPY --link --from=prep /usr/lib/libedit.so* /usr/lib/
 COPY --link --from=prep /usr/lib/libncursesw.so* /usr/lib/
 COPY --link --from=prep /usr/lib/libjemalloc.so* /usr/lib/
+COPY --link --from=prep /usr/lib/libexecinfo.so* /usr/lib/
 COPY --link --from=prep /lib/libz.so* /lib/
 
 # musl-dev headers (needed by TCC for VCL → C → .so compilation)

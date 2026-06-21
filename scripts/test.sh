@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Test suite for varnish-hardened
 set -eu
 

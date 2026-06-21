@@ -17,8 +17,17 @@ ENV CFLAGS="-O2 -fstack-protector-strong -fstack-clash-protection -fPIE -D_FORTI
 RUN --mount=type=cache,target=/var/cache/apk \
     apk add --no-cache \
         build-base autoconf automake libtool pkgconfig python3 \
-        pcre2-dev libedit-dev ncurses-dev jemalloc-dev linux-headers \
-        tcc
+        pcre2-dev libedit-dev ncurses-dev jemalloc-dev linux-headers
+
+# Build TCC from source (not in Alpine 3.21 repos)
+ARG TCC_VERSION=0.9.27
+RUN wget -q "http://download.savannah.gnu.org/releases/tinycc/tcc-${TCC_VERSION}.tar.bz2" \
+    && tar xjf "tcc-${TCC_VERSION}.tar.bz2" \
+    && cd "tcc-${TCC_VERSION}" \
+    && ./configure --prefix=/usr --strip-binaries \
+    && make -j"$(nproc)" \
+    && make install DESTDIR=/tcc-out \
+    && strip /tcc-out/usr/bin/tcc
 
 # Download and extract Varnish source
 RUN --mount=type=secret,id=ca-certs,required=false \
@@ -47,9 +56,8 @@ RUN mkdir -p /out/usr/include/varnish \
     && cp -a include/*.h /out/usr/include/varnish/ 2>/dev/null || true
 
 # Build TCC as static binary (VCL compiler for FROM scratch)
-RUN mkdir -p /tcc-out \
-    && cp /usr/bin/tcc /tcc-out/tcc \
-    && strip /tcc-out/tcc
+RUN mkdir -p /tcc-out-bin \
+    && cp /tcc-out/usr/bin/tcc /tcc-out-bin/tcc
 
 # --- Stage 2: Go init binary -------------------------------------------
 FROM golang:1.24-alpine AS gobuilder
@@ -82,8 +90,9 @@ COPY --from=builder /out/usr/bin/varnishtop /usr/bin/
 COPY --from=builder /out/usr/lib/varnish/ /usr/lib/varnish/
 COPY --from=builder /out/usr/include/varnish/ /usr/include/varnish/
 
-# TCC static binary as cc
-COPY --from=builder /tcc-out/tcc /usr/bin/tcc
+# TCC static binary as cc + its runtime lib
+COPY --from=builder /tcc-out-bin/tcc /usr/bin/tcc
+COPY --from=builder /tcc-out/usr/lib/tcc/ /usr/lib/tcc/
 RUN ln -sf /usr/bin/tcc /usr/bin/cc
 
 # Go init binary
@@ -131,9 +140,10 @@ COPY --link --from=prep /usr/include/ /usr/include/
 # tini-static as PID 1
 COPY --link --from=prep /sbin/tini-static /sbin/tini
 
-# TCC compiler (VCL → C → .so at runtime)
+# TCC compiler (VCL → C → .so at runtime) + runtime lib
 COPY --link --from=prep /usr/bin/tcc /usr/bin/tcc
 COPY --link --from=prep /usr/bin/cc /usr/bin/cc
+COPY --link --from=prep /usr/lib/tcc/ /usr/lib/tcc/
 
 # Varnish binaries + vmods
 COPY --link --from=prep /usr/sbin/varnishd /usr/sbin/

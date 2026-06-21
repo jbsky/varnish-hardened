@@ -14,6 +14,7 @@ on:
       - 'init.go'
       - 'go.mod'
       - 'conf/**'
+      - 'scripts/**'
       - '.github/workflows/build-push.yml'
   pull_request:
     branches: [main]

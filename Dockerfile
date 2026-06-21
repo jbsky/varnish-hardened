@@ -19,14 +19,12 @@ RUN --mount=type=cache,target=/var/cache/apk \
         build-base autoconf automake libtool pkgconfig python3 \
         pcre2-dev libedit-dev ncurses-dev jemalloc-dev linux-headers
 
-# Build TCC from source (not in Alpine 3.21 repos)
-# Unset hardening flags — TCC's runtime lib (libtcc1) uses its own conventions
-ARG TCC_VERSION=0.9.27
+# Build TCC from source (mob branch — 0.9.27 release is too old for musl 1.2+)
 RUN unset CFLAGS CXXFLAGS LDFLAGS \
-    && wget -q "http://download.savannah.gnu.org/releases/tinycc/tcc-${TCC_VERSION}.tar.bz2" \
-    && tar xjf "tcc-${TCC_VERSION}.tar.bz2" \
-    && cd "tcc-${TCC_VERSION}" \
-    && ./configure --prefix=/usr --strip-binaries --disable-bcheck \
+    && apk add --no-cache git \
+    && git clone --depth=1 https://repo.or.cz/tinycc.git /tcc-src \
+    && cd /tcc-src \
+    && ./configure --prefix=/usr --strip-binaries \
     && make -j"$(nproc)" \
     && make install DESTDIR=/tcc-out \
     && strip /tcc-out/usr/bin/tcc

@@ -26,7 +26,7 @@ RUN unset CFLAGS CXXFLAGS LDFLAGS \
     && wget -q "http://download.savannah.gnu.org/releases/tinycc/tcc-${TCC_VERSION}.tar.bz2" \
     && tar xjf "tcc-${TCC_VERSION}.tar.bz2" \
     && cd "tcc-${TCC_VERSION}" \
-    && ./configure --prefix=/usr --strip-binaries \
+    && ./configure --prefix=/usr --strip-binaries --disable-bcheck \
     && make -j"$(nproc)" \
     && make install DESTDIR=/tcc-out \
     && strip /tcc-out/usr/bin/tcc

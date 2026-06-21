@@ -1,0 +1,78 @@
+# =====================================================================
+#  Version Watch – Varnish Hardened
+#  Daily cron: detect upstream Varnish updates → auto-rebuild
+# =====================================================================
+name: version-watch
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  NAMESPACE: ${{ github.repository_owner }}
+  IMAGE_NAME: varnish-hardened
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  check:
+    name: Check upstream versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Login ghcr.io
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get current and upstream versions
+        id: compare
+        run: |
+          set -euo pipefail
+
+          # Current version from versions.json
+          CURRENT=$(jq -r '.varnish' versions.json)
+          echo "current=${CURRENT}" >> "$GITHUB_OUTPUT"
+
+          # Latest stable from varnish-cache.org
+          LATEST=$(curl -fsSL https://varnish-cache.org/releases/ \
+            | grep -oP 'varnish-\K[0-9]+\.[0-9]+\.[0-9]+' \
+            | sort -V | tail -1)
+          echo "latest=${LATEST}" >> "$GITHUB_OUTPUT"
+
+          if [ "$CURRENT" != "$LATEST" ]; then
+            echo "outdated=true" >> "$GITHUB_OUTPUT"
+            echo "### Update available" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Current: ${CURRENT}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Latest:  ${LATEST}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "outdated=false" >> "$GITHUB_OUTPUT"
+            echo "### Up to date (${CURRENT})" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Update versions.json and trigger rebuild
+        if: steps.compare.outputs.outdated == 'true'
+        env:
+          LATEST: ${{ steps.compare.outputs.latest }}
+        run: |
+          jq --arg v "$LATEST" '.varnish = $v' versions.json > versions.json.tmp
+          mv versions.json.tmp versions.json
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add versions.json
+          git commit -m "chore: bump varnish to ${LATEST}"
+
+          # Auto-tag
+          TAG="auto-$(date +%Y%m%d).1"
+          git tag "$TAG"
+          git push origin main --tags
+
+          echo "### Triggered rebuild" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Tag: ${TAG}" >> "$GITHUB_STEP_SUMMARY"

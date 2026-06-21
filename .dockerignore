@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+*.md
+scripts/
+dist/
+.DS_Store
+*.log
+*.swp
+*~
+docker-compose*.yml
+Makefile
+.hadolint.yaml
+.github/
+.gitlab-ci.yml

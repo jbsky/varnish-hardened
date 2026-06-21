@@ -1,0 +1,213 @@
+# =====================================================================
+#  Build & Push – Varnish Hardened
+#  Multi-stage Dockerfile → ghcr.io + Docker Hub
+#  Lint + Build + Sign (cosign OIDC) + Scan (Trivy) + Release
+# =====================================================================
+name: build-push
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+    paths:
+      - 'Dockerfile'
+      - 'init.go'
+      - 'go.mod'
+      - 'conf/**'
+      - '.github/workflows/build-push.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  NAMESPACE: ${{ github.repository_owner }}
+  IMAGE_NAME: varnish-hardened
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  security-events: write
+  attestations: write
+
+jobs:
+  # -------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Hadolint
+        uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: warning
+
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: ./scripts
+
+  # -------------------------------------------------------------------
+  build:
+    name: Build & Push
+    needs: lint
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: image=moby/buildkit:latest
+
+      - name: Login ghcr.io
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check Docker Hub credentials
+        id: dockerhub
+        run: |
+          if [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Login Docker Hub
+        if: steps.dockerhub.outputs.available == 'true'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Resolve Varnish version
+        id: versions
+        run: |
+          set -euo pipefail
+          VARNISH_VER=$(jq -r '.varnish' versions.json)
+          ALPINE_VER=$(jq -r '.alpine' versions.json)
+          echo "varnish=${VARNISH_VER}" >> "$GITHUB_OUTPUT"
+          echo "alpine=${ALPINE_VER}" >> "$GITHUB_OUTPUT"
+          echo "### Resolved versions" >> "$GITHUB_STEP_SUMMARY"
+          echo "- varnish: ${VARNISH_VER}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- alpine: ${ALPINE_VER}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Compute Docker Hub image name
+        id: dockerhub-image
+        if: steps.dockerhub.outputs.available == 'true'
+        env:
+          DOCKERHUB_NS: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: echo "image=docker.io/${DOCKERHUB_NS}/${{ env.IMAGE_NAME }}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}
+            ${{ steps.dockerhub-image.outputs.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=${{ steps.versions.outputs.varnish }}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build & Push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          sbom: true
+          provenance: mode=max
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.version=${{ steps.versions.outputs.varnish }}
+            versions=varnish=${{ steps.versions.outputs.varnish }} alpine=${{ steps.versions.outputs.alpine }}
+          build-args: |
+            VARNISH_VERSION=${{ steps.versions.outputs.varnish }}
+            ALPINE_VERSION=${{ steps.versions.outputs.alpine }}
+          cache-from: type=gha,scope=varnish
+          cache-to: type=gha,mode=max,scope=varnish
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (OIDC keyless)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          HAS_DOCKERHUB: ${{ steps.dockerhub.outputs.available }}
+          DOCKERHUB_NS: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+          if [ "$HAS_DOCKERHUB" = "true" ]; then
+            COSIGN_REPOSITORY="${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}" \
+              cosign sign --yes "docker.io/${DOCKERHUB_NS}/${{ env.IMAGE_NAME }}@${DIGEST}"
+          fi
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          format: sarif
+          output: trivy-varnish.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+          ignore-unfixed: true
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-varnish.sarif
+          category: varnish-hardened
+
+      - name: GitHub SLSA Attestation
+        if: "!startsWith(github.ref, 'refs/heads/dependabot/')"
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  # -------------------------------------------------------------------
+  release:
+    name: GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Tarball + checksums
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          tar --exclude='.git' --exclude='dist' \
+              -czf "dist/varnish-hardened-${VERSION}.tar.gz" \
+              --transform "s,^,varnish-hardened-${VERSION}/," \
+              $(ls -A | grep -v -E '^(\.git|dist)$')
+          cd dist
+          sha256sum "varnish-hardened-${VERSION}.tar.gz" > "varnish-hardened-${VERSION}.sha256"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          generate_release_notes: true
+          files: |
+            dist/varnish-hardened-${{ github.ref_name }}.tar.gz
+            dist/varnish-hardened-${{ github.ref_name }}.sha256

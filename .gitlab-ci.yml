@@ -1,0 +1,46 @@
+stages:
+  - lint
+  - build
+  - scan
+
+variables:
+  IMAGE: ${CI_REGISTRY_IMAGE}
+  TAG: ${CI_COMMIT_SHORT_SHA}
+
+lint:
+  stage: lint
+  image: docker.io/hadolint/hadolint:latest-alpine
+  script:
+    - hadolint --failure-threshold warning Dockerfile
+  tags: [docker, apk]
+
+build:
+  stage: build
+  image: docker:27
+  services:
+    - name: docker:27-dind
+      alias: docker
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_BUILDKIT: "1"
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  script:
+    - docker build
+        --build-arg http_proxy="${http_proxy:-}"
+        --build-arg https_proxy="${https_proxy:-}"
+        --tag "${IMAGE}:${TAG}"
+        --tag "${IMAGE}:latest"
+        .
+    - docker push "${IMAGE}:${TAG}"
+    - docker push "${IMAGE}:latest"
+  tags: [docker, apk]
+
+scan:
+  stage: scan
+  image: docker.io/aquasec/trivy:latest
+  script:
+    - trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0
+        "${IMAGE}:${TAG}"
+  tags: [docker, apk]
+  allow_failure: true

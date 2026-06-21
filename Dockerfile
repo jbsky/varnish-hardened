@@ -20,8 +20,10 @@ RUN --mount=type=cache,target=/var/cache/apk \
         pcre2-dev libedit-dev ncurses-dev jemalloc-dev linux-headers
 
 # Build TCC from source (not in Alpine 3.21 repos)
+# Unset hardening flags — TCC's runtime lib (libtcc1) uses its own conventions
 ARG TCC_VERSION=0.9.27
-RUN wget -q "http://download.savannah.gnu.org/releases/tinycc/tcc-${TCC_VERSION}.tar.bz2" \
+RUN unset CFLAGS CXXFLAGS LDFLAGS \
+    && wget -q "http://download.savannah.gnu.org/releases/tinycc/tcc-${TCC_VERSION}.tar.bz2" \
     && tar xjf "tcc-${TCC_VERSION}.tar.bz2" \
     && cd "tcc-${TCC_VERSION}" \
     && ./configure --prefix=/usr --strip-binaries \

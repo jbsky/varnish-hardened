@@ -16,7 +16,7 @@ ENV CFLAGS="-O2 -fstack-protector-strong -fstack-clash-protection -fPIE -D_FORTI
 # Build dependencies
 RUN --mount=type=cache,target=/var/cache/apk \
     apk add --no-cache \
-        build-base autoconf automake libtool pkgconfig python3 py3-docutils \
+        build-base autoconf automake libtool pkgconfig python3 \
         pcre2-dev libedit-dev ncurses-dev jemalloc-dev linux-headers
 
 # Build TCC from source (mob branch — only the compiler binary, not libtcc1)
@@ -45,6 +45,8 @@ RUN ./configure \
         --localstatedir=/var/lib \
         --with-jemalloc \
         --disable-dependency-tracking \
+        --without-rst2man \
+        --without-sphinx-build \
     && make -j"$(nproc)" \
     && make install DESTDIR=/out
 

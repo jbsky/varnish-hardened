@@ -19,14 +19,16 @@ RUN --mount=type=cache,target=/var/cache/apk \
         build-base autoconf automake libtool pkgconfig python3 \
         pcre2-dev libedit-dev ncurses-dev jemalloc-dev linux-headers
 
-# Build TCC from source (mob branch — 0.9.27 release is too old for musl 1.2+)
+# Build TCC from source (mob branch — only the compiler binary, not libtcc1)
+# libtcc1.a/bcheck incompatible with musl 1.2+ — not needed for VCL .so compilation
 RUN unset CFLAGS CXXFLAGS LDFLAGS \
     && apk add --no-cache git \
     && git clone --depth=1 https://repo.or.cz/tinycc.git /tcc-src \
     && cd /tcc-src \
-    && ./configure --prefix=/usr --strip-binaries \
-    && make -j"$(nproc)" \
-    && make install DESTDIR=/tcc-out \
+    && ./configure --prefix=/usr \
+    && make tcc \
+    && mkdir -p /tcc-out/usr/bin \
+    && cp tcc /tcc-out/usr/bin/tcc \
     && strip /tcc-out/usr/bin/tcc
 
 # Download and extract Varnish source
@@ -54,10 +56,6 @@ RUN find /out -type f -executable -exec sh -c \
 RUN mkdir -p /out/usr/include/varnish \
     && cp -a /out/usr/include/varnish/* /out/usr/include/varnish/ 2>/dev/null || true \
     && cp -a include/*.h /out/usr/include/varnish/ 2>/dev/null || true
-
-# Build TCC as static binary (VCL compiler for FROM scratch)
-RUN mkdir -p /tcc-out-bin \
-    && cp /tcc-out/usr/bin/tcc /tcc-out-bin/tcc
 
 # --- Stage 2: Go init binary -------------------------------------------
 FROM golang:1.24-alpine AS gobuilder
@@ -90,9 +88,8 @@ COPY --from=builder /out/usr/bin/varnishtop /usr/bin/
 COPY --from=builder /out/usr/lib/varnish/ /usr/lib/varnish/
 COPY --from=builder /out/usr/include/varnish/ /usr/include/varnish/
 
-# TCC static binary as cc + its runtime lib
-COPY --from=builder /tcc-out-bin/tcc /usr/bin/tcc
-COPY --from=builder /tcc-out/usr/lib/tcc/ /usr/lib/tcc/
+# TCC binary as cc (no libtcc1 needed for shared lib compilation)
+COPY --from=builder /tcc-out/usr/bin/tcc /usr/bin/tcc
 RUN ln -sf /usr/bin/tcc /usr/bin/cc
 
 # Go init binary
@@ -140,10 +137,9 @@ COPY --link --from=prep /usr/include/ /usr/include/
 # tini-static as PID 1
 COPY --link --from=prep /sbin/tini-static /sbin/tini
 
-# TCC compiler (VCL → C → .so at runtime) + runtime lib
+# TCC compiler (VCL → C → .so at runtime)
 COPY --link --from=prep /usr/bin/tcc /usr/bin/tcc
 COPY --link --from=prep /usr/bin/cc /usr/bin/cc
-COPY --link --from=prep /usr/lib/tcc/ /usr/lib/tcc/
 
 # Varnish binaries + vmods
 COPY --link --from=prep /usr/sbin/varnishd /usr/sbin/

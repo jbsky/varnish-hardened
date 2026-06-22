@@ -21,17 +21,19 @@ RUN --mount=type=cache,target=/var/cache/apk \
         pcre2-dev libedit-dev ncurses-dev jemalloc-dev linux-headers \
         libunwind-dev
 
-# Build TCC from source (mob branch — only the compiler binary, not libtcc1)
-# libtcc1.a/bcheck incompatible with musl 1.2+ — not needed for VCL .so compilation
+# Build TCC from source (mob branch — only compiler + minimal runtime)
+# libtcc1 built without bcheck (incompatible with musl 1.2+)
 RUN unset CFLAGS CXXFLAGS LDFLAGS \
     && apk add --no-cache git \
     && git clone --depth=1 https://repo.or.cz/tinycc.git /tcc-src \
     && cd /tcc-src \
     && ./configure --prefix=/usr \
     && make tcc \
-    && mkdir -p /tcc-out/usr/bin \
+    && make -C lib BCHECK_O= libtcc1.a || true \
+    && mkdir -p /tcc-out/usr/bin /tcc-out/usr/lib/tcc \
     && cp tcc /tcc-out/usr/bin/tcc \
-    && strip /tcc-out/usr/bin/tcc
+    && strip /tcc-out/usr/bin/tcc \
+    && (cp lib/libtcc1.a /tcc-out/usr/lib/tcc/ 2>/dev/null || true)
 
 # Download and extract Varnish source
 RUN --mount=type=secret,id=ca-certs,required=false \
@@ -94,6 +96,7 @@ COPY --from=builder /out/usr/include/varnish/ /usr/include/varnish/
 
 # TCC binary as cc/gcc (Varnish VCC_CC defaults to "exec gcc")
 COPY --from=builder /tcc-out/usr/bin/tcc /usr/bin/tcc
+COPY --from=builder /tcc-out/usr/lib/tcc/ /usr/lib/tcc/
 RUN ln -sf /usr/bin/tcc /usr/bin/cc \
     && ln -sf /usr/bin/tcc /usr/bin/gcc
 
@@ -146,13 +149,14 @@ COPY --link --from=prep /usr/lib/libstdc++.so* /usr/lib/
 COPY --link --from=prep /usr/lib/libgcc_s.so* /usr/lib/
 COPY --link --from=prep /lib/libz.so* /lib/
 
-# musl-dev headers + CRT objects (needed by TCC for VCL → C → .so compilation)
+# musl-dev headers + CRT objects + libc linker script (needed by TCC for VCL → C → .so)
 COPY --link --from=prep /usr/include/ /usr/include/
 COPY --link --from=prep /usr/lib/crt1.o /usr/lib/
 COPY --link --from=prep /usr/lib/crti.o /usr/lib/
 COPY --link --from=prep /usr/lib/crtn.o /usr/lib/
 COPY --link --from=prep /usr/lib/rcrt1.o /usr/lib/
 COPY --link --from=prep /usr/lib/Scrt1.o /usr/lib/
+COPY --link --from=prep /usr/lib/libc.so /usr/lib/
 
 # tini-static as PID 1
 COPY --link --from=prep /sbin/tini-static /sbin/tini
@@ -162,10 +166,11 @@ COPY --link --from=prep /bin/busybox-varnish /bin/busybox-varnish
 COPY --link --from=prep /bin/sh /bin/sh
 COPY --link --from=prep /bin/rm /bin/rm
 
-# TCC compiler (VCL → C → .so at runtime)
+# TCC compiler (VCL → C → .so at runtime) + runtime lib
 COPY --link --from=prep /usr/bin/tcc /usr/bin/tcc
 COPY --link --from=prep /usr/bin/cc /usr/bin/cc
 COPY --link --from=prep /usr/bin/gcc /usr/bin/gcc
+COPY --link --from=prep /usr/lib/tcc/ /usr/lib/tcc/
 
 # Varnish binaries + shared libs + vmods
 COPY --link --from=prep /usr/sbin/varnishd /usr/sbin/

@@ -135,26 +135,12 @@ COPY --link --from=prep /etc/group /etc/group
 COPY --link --from=prep /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --link --from=prep /usr/share/zoneinfo/ /usr/share/zoneinfo/
 
-# Dynamic linker + all runtime libraries (single /lib/ copy)
+# Dynamic linker + all runtime libraries
 COPY --link --from=prep /lib/ /lib/
-COPY --link --from=prep /usr/lib/libpcre2-8* /usr/lib/
-COPY --link --from=prep /usr/lib/libedit* /usr/lib/
-COPY --link --from=prep /usr/lib/libncursesw* /usr/lib/
-COPY --link --from=prep /usr/lib/libjemalloc* /usr/lib/
-COPY --link --from=prep /usr/lib/libunwind* /usr/lib/
-COPY --link --from=prep /usr/lib/liblzma* /usr/lib/
-COPY --link --from=prep /usr/lib/libstdc++* /usr/lib/
-COPY --link --from=prep /usr/lib/libgcc_s* /usr/lib/
-COPY --link --from=prep /usr/lib/libvarnishapi* /usr/lib/
+COPY --link --from=prep /usr/lib/ /usr/lib/
 
-# musl-dev headers + CRT objects + libc linker script (needed by TCC for VCL → C → .so)
+# musl-dev headers (needed by TCC for VCL → C → .so)
 COPY --link --from=prep /usr/include/ /usr/include/
-COPY --link --from=prep /usr/lib/crt1.o /usr/lib/
-COPY --link --from=prep /usr/lib/crti.o /usr/lib/
-COPY --link --from=prep /usr/lib/crtn.o /usr/lib/
-COPY --link --from=prep /usr/lib/rcrt1.o /usr/lib/
-COPY --link --from=prep /usr/lib/Scrt1.o /usr/lib/
-COPY --link --from=prep /usr/lib/libc.so /usr/lib/
 
 # tini-static as PID 1
 COPY --link --from=prep /sbin/tini-static /sbin/tini
@@ -164,11 +150,10 @@ COPY --link --from=prep /bin/busybox-varnish /bin/busybox-varnish
 COPY --link --from=prep /bin/sh /bin/sh
 COPY --link --from=prep /bin/rm /bin/rm
 
-# TCC compiler (VCL → C → .so at runtime) + runtime lib
+# TCC compiler (already in /usr/lib/ via bulk copy, just need binaries)
 COPY --link --from=prep /usr/bin/tcc /usr/bin/tcc
 COPY --link --from=prep /usr/bin/cc /usr/bin/cc
 COPY --link --from=prep /usr/bin/gcc /usr/bin/gcc
-COPY --link --from=prep /usr/lib/tcc/ /usr/lib/tcc/
 
 # Varnish binaries + shared libs + vmods
 COPY --link --from=prep /usr/sbin/varnishd /usr/sbin/

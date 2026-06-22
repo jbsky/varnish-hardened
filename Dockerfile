@@ -74,7 +74,7 @@ RUN --mount=type=cache,target=/var/cache/apk \
     apk add --no-cache \
         pcre2 libedit ncurses-libs jemalloc libunwind \
         libstdc++ libgcc \
-        musl-dev \
+        musl-dev busybox-static \
         tini-static ca-certificates tzdata
 
 # Create non-root user
@@ -101,7 +101,10 @@ COPY --from=gobuilder /init /usr/local/bin/init
 # Setup runtime directories
 RUN mkdir -p /var/lib/varnish /etc/varnish /tmp \
     && chown 6081:65534 /var/lib/varnish \
-    && chmod 1777 /tmp
+    && chmod 1777 /tmp \
+    && ln -s /bin/busybox-static /bin/sh \
+    && ln -s /bin/busybox-static /bin/rm \
+    && ln -s /bin/busybox-static /usr/bin/env
 
 # Default minimal VCL
 RUN printf 'vcl 4.1;\nbackend default none;\n' > /etc/varnish/default.vcl
@@ -143,6 +146,12 @@ COPY --link --from=prep /usr/include/ /usr/include/
 
 # tini-static as PID 1
 COPY --link --from=prep /sbin/tini-static /sbin/tini
+
+# Minimal shell (required by varnishd system() calls for cleanup)
+COPY --link --from=prep /bin/busybox-static /bin/busybox-static
+COPY --link --from=prep /bin/sh /bin/sh
+COPY --link --from=prep /bin/rm /bin/rm
+COPY --link --from=prep /usr/bin/env /usr/bin/env
 
 # TCC compiler (VCL → C → .so at runtime)
 COPY --link --from=prep /usr/bin/tcc /usr/bin/tcc

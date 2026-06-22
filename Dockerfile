@@ -91,9 +91,10 @@ COPY --from=builder /out/usr/bin/varnishtop /usr/bin/
 COPY --from=builder /out/usr/lib/varnish/ /usr/lib/varnish/
 COPY --from=builder /out/usr/include/varnish/ /usr/include/varnish/
 
-# TCC binary as cc (no libtcc1 needed for shared lib compilation)
+# TCC binary as cc/gcc (Varnish VCC_CC defaults to "exec gcc")
 COPY --from=builder /tcc-out/usr/bin/tcc /usr/bin/tcc
-RUN ln -sf /usr/bin/tcc /usr/bin/cc
+RUN ln -sf /usr/bin/tcc /usr/bin/cc \
+    && ln -sf /usr/bin/tcc /usr/bin/gcc
 
 # Go init binary
 COPY --from=gobuilder /init /usr/local/bin/init
@@ -158,6 +159,7 @@ COPY --link --from=prep /bin/rm /bin/rm
 # TCC compiler (VCL → C → .so at runtime)
 COPY --link --from=prep /usr/bin/tcc /usr/bin/tcc
 COPY --link --from=prep /usr/bin/cc /usr/bin/cc
+COPY --link --from=prep /usr/bin/gcc /usr/bin/gcc
 
 # Varnish binaries + shared libs + vmods
 COPY --link --from=prep /usr/sbin/varnishd /usr/sbin/

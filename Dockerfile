@@ -146,8 +146,13 @@ COPY --link --from=prep /usr/lib/libstdc++.so* /usr/lib/
 COPY --link --from=prep /usr/lib/libgcc_s.so* /usr/lib/
 COPY --link --from=prep /lib/libz.so* /lib/
 
-# musl-dev headers (needed by TCC for VCL → C → .so compilation)
+# musl-dev headers + CRT objects (needed by TCC for VCL → C → .so compilation)
 COPY --link --from=prep /usr/include/ /usr/include/
+COPY --link --from=prep /usr/lib/crt1.o /usr/lib/
+COPY --link --from=prep /usr/lib/crti.o /usr/lib/
+COPY --link --from=prep /usr/lib/crtn.o /usr/lib/
+COPY --link --from=prep /usr/lib/rcrt1.o /usr/lib/
+COPY --link --from=prep /usr/lib/Scrt1.o /usr/lib/
 
 # tini-static as PID 1
 COPY --link --from=prep /sbin/tini-static /sbin/tini

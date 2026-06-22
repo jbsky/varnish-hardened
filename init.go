@@ -106,13 +106,19 @@ func healthcheck() int {
 // ---------------------------------------------------------------------------
 
 func entrypoint() error {
-	// If args passed (from CMD or docker run), use them directly
-	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
-		// User passed a full command (e.g., varnishd -F ...)
+	// If raw varnishd flags passed (from k8s args/CMD), exec varnishd directly
+	if len(os.Args) > 1 && strings.HasPrefix(os.Args[1], "-") {
+		args := append([]string{varnishBin, "-F"}, os.Args[1:]...)
+		log("Exec (raw args): %s", strings.Join(args, " "))
+		return execProcess(args)
+	}
+
+	// If a full command passed (e.g., varnishd -F ...)
+	if len(os.Args) > 1 {
 		return execProcess(os.Args[1:])
 	}
 
-	// Build varnishd command
+	// Default: build varnishd command from env vars
 	vclFile := envGet("VARNISH_VCL", defaultVCL)
 	cacheSize := envGet("VARNISH_SIZE", defaultSize)
 	httpPort := envGet("VARNISH_HTTP_PORT", "8080")
@@ -141,11 +147,6 @@ func entrypoint() error {
 	// Append extra args from VARNISH_OPTS env
 	if opts := os.Getenv("VARNISH_OPTS"); opts != "" {
 		args = append(args, strings.Fields(opts)...)
-	}
-
-	// Append any CLI flags passed directly
-	if len(os.Args) > 1 {
-		args = append(args, os.Args[1:]...)
 	}
 
 	log("Varnish %s | VCL=%s | cache=%s | http=:%s | proxy=:%s",

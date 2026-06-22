@@ -74,7 +74,7 @@ RUN --mount=type=cache,target=/var/cache/apk \
     apk add --no-cache \
         pcre2 libedit ncurses-libs jemalloc libunwind \
         libstdc++ libgcc \
-        musl-dev busybox-static \
+        musl-dev \
         tini-static ca-certificates tzdata
 
 # Create non-root user
@@ -101,13 +101,16 @@ COPY --from=gobuilder /init /usr/local/bin/init
 # Setup runtime directories
 RUN mkdir -p /var/lib/varnish /etc/varnish /tmp \
     && chown 6081:65534 /var/lib/varnish \
-    && chmod 1777 /tmp \
-    && ln -sf /bin/busybox-static /bin/sh \
-    && ln -sf /bin/busybox-static /bin/rm \
-    && ln -sf /bin/busybox-static /usr/bin/env
+    && chmod 1777 /tmp
 
 # Default minimal VCL
 RUN printf 'vcl 4.1;\nbackend default none;\n' > /etc/varnish/default.vcl
+
+# Busybox symlinks for varnishd system() calls (MUST be last — breaks /bin/sh)
+RUN cp /bin/busybox /bin/busybox-varnish \
+    && rm -f /bin/sh /bin/rm \
+    && ln -s /bin/busybox-varnish /bin/sh \
+    && ln -s /bin/busybox-varnish /bin/rm
 
 # --- Stage 4: FROM scratch — final hardened image ----------------------
 FROM scratch
@@ -148,10 +151,9 @@ COPY --link --from=prep /usr/include/ /usr/include/
 COPY --link --from=prep /sbin/tini-static /sbin/tini
 
 # Minimal shell (required by varnishd system() calls for cleanup)
-COPY --link --from=prep /bin/busybox-static /bin/busybox-static
+COPY --link --from=prep /bin/busybox-varnish /bin/busybox-varnish
 COPY --link --from=prep /bin/sh /bin/sh
 COPY --link --from=prep /bin/rm /bin/rm
-COPY --link --from=prep /usr/bin/env /usr/bin/env
 
 # TCC compiler (VCL → C → .so at runtime)
 COPY --link --from=prep /usr/bin/tcc /usr/bin/tcc

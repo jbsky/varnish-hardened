@@ -22,9 +22,10 @@ import (
 const (
 	varnishUID  = 6081
 	varnishGID  = 65534
+	varnishBin  = "/usr/sbin/varnishd"
 	defaultVCL  = "/etc/varnish/default.vcl"
 	defaultSize = "256M"
-	healthURL   = "http://127.0.0.1:8080/healthcheck"
+	healthURL   = "http://127.0.0.1:8080/__health"
 )
 
 func main() {
@@ -127,7 +128,7 @@ func entrypoint() error {
 	os.MkdirAll(workdir, 0755)
 
 	args := []string{
-		"varnishd",
+		varnishBin,
 		"-F",
 		"-f", vclFile,
 		"-a", "http=:" + httpPort + ",HTTP",
@@ -181,9 +182,15 @@ func fileExists(path string) bool {
 }
 
 func execProcess(args []string) error {
-	bin, err := exec.LookPath(args[0])
-	if err != nil {
-		return fmt.Errorf("command not found: %s", args[0])
+	var bin string
+	var err error
+	if len(args[0]) > 0 && args[0][0] == '/' {
+		bin = args[0]
+	} else {
+		bin, err = exec.LookPath(args[0])
+		if err != nil {
+			return fmt.Errorf("command not found: %s", args[0])
+		}
 	}
 	return syscall.Exec(bin, args, os.Environ())
 }

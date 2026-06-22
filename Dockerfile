@@ -163,7 +163,8 @@ COPY --link --from=prep /var/lib/varnish/ /var/lib/varnish/
 COPY --link --from=prep /etc/varnish/ /etc/varnish/
 COPY --link --from=prep /tmp/ /tmp/
 
-ENV VARNISH_SIZE=256M
+ENV VARNISH_SIZE=256M \
+    PATH="/usr/sbin:/usr/bin:/usr/local/bin:/sbin:/bin"
 
 USER 6081:65534
 WORKDIR /etc/varnish

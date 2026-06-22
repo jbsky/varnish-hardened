@@ -91,6 +91,7 @@ COPY --from=builder /out/usr/bin/varnishncsa /usr/bin/
 COPY --from=builder /out/usr/bin/varnishhist /usr/bin/
 COPY --from=builder /out/usr/bin/varnishtop /usr/bin/
 COPY --from=builder /out/usr/lib/varnish/ /usr/lib/varnish/
+COPY --from=builder /out/usr/lib/libvarnishapi* /usr/lib/
 COPY --from=builder /out/usr/include/varnish/ /usr/include/varnish/
 
 # TCC binary as cc/gcc (Varnish VCC_CC defaults to "exec gcc")

@@ -47,6 +47,7 @@ RUN ./configure \
         --localstatedir=/var/lib \
         --with-jemalloc \
         --disable-dependency-tracking \
+        VCC_CC="exec tcc -fpic -shared -o %o %s" \
     && make -j"$(nproc)" \
     && make install DESTDIR=/out
 

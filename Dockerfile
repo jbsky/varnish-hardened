@@ -102,9 +102,9 @@ COPY --from=gobuilder /init /usr/local/bin/init
 RUN mkdir -p /var/lib/varnish /etc/varnish /tmp \
     && chown 6081:65534 /var/lib/varnish \
     && chmod 1777 /tmp \
-    && ln -s /bin/busybox-static /bin/sh \
-    && ln -s /bin/busybox-static /bin/rm \
-    && ln -s /bin/busybox-static /usr/bin/env
+    && ln -sf /bin/busybox-static /bin/sh \
+    && ln -sf /bin/busybox-static /bin/rm \
+    && ln -sf /bin/busybox-static /usr/bin/env
 
 # Default minimal VCL
 RUN printf 'vcl 4.1;\nbackend default none;\n' > /etc/varnish/default.vcl

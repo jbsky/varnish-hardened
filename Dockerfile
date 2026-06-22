@@ -135,18 +135,17 @@ COPY --link --from=prep /etc/group /etc/group
 COPY --link --from=prep /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --link --from=prep /usr/share/zoneinfo/ /usr/share/zoneinfo/
 
-# Dynamic linker + runtime libraries
-COPY --link --from=prep /lib/ld-musl-x86_64.so.1 /lib/
-COPY --link --from=prep /lib/libc.musl-x86_64.so.1 /lib/
-COPY --link --from=prep /usr/lib/libpcre2-8.so* /usr/lib/
-COPY --link --from=prep /usr/lib/libedit.so* /usr/lib/
-COPY --link --from=prep /usr/lib/libncursesw.so* /usr/lib/
-COPY --link --from=prep /usr/lib/libjemalloc.so* /usr/lib/
-COPY --link --from=prep /usr/lib/libunwind*.so* /usr/lib/
-COPY --link --from=prep /usr/lib/liblzma.so* /usr/lib/
-COPY --link --from=prep /usr/lib/libstdc++.so* /usr/lib/
-COPY --link --from=prep /usr/lib/libgcc_s.so* /usr/lib/
-COPY --link --from=prep /lib/libz.so* /lib/
+# Dynamic linker + all runtime libraries (single /lib/ copy)
+COPY --link --from=prep /lib/ /lib/
+COPY --link --from=prep /usr/lib/libpcre2-8* /usr/lib/
+COPY --link --from=prep /usr/lib/libedit* /usr/lib/
+COPY --link --from=prep /usr/lib/libncursesw* /usr/lib/
+COPY --link --from=prep /usr/lib/libjemalloc* /usr/lib/
+COPY --link --from=prep /usr/lib/libunwind* /usr/lib/
+COPY --link --from=prep /usr/lib/liblzma* /usr/lib/
+COPY --link --from=prep /usr/lib/libstdc++* /usr/lib/
+COPY --link --from=prep /usr/lib/libgcc_s* /usr/lib/
+COPY --link --from=prep /usr/lib/libvarnishapi* /usr/lib/
 
 # musl-dev headers + CRT objects + libc linker script (needed by TCC for VCL → C → .so)
 COPY --link --from=prep /usr/include/ /usr/include/

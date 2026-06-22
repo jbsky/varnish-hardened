@@ -73,6 +73,7 @@ FROM alpine:${ALPINE_VERSION} AS prep
 RUN --mount=type=cache,target=/var/cache/apk \
     apk add --no-cache \
         pcre2 libedit ncurses-libs jemalloc libunwind \
+        libstdc++ libgcc \
         musl-dev \
         tini-static ca-certificates tzdata
 
@@ -133,6 +134,8 @@ COPY --link --from=prep /usr/lib/libncursesw.so* /usr/lib/
 COPY --link --from=prep /usr/lib/libjemalloc.so* /usr/lib/
 COPY --link --from=prep /usr/lib/libunwind*.so* /usr/lib/
 COPY --link --from=prep /usr/lib/liblzma.so* /usr/lib/
+COPY --link --from=prep /usr/lib/libstdc++.so* /usr/lib/
+COPY --link --from=prep /usr/lib/libgcc_s.so* /usr/lib/
 COPY --link --from=prep /lib/libz.so* /lib/
 
 # musl-dev headers (needed by TCC for VCL → C → .so compilation)
@@ -145,7 +148,7 @@ COPY --link --from=prep /sbin/tini-static /sbin/tini
 COPY --link --from=prep /usr/bin/tcc /usr/bin/tcc
 COPY --link --from=prep /usr/bin/cc /usr/bin/cc
 
-# Varnish binaries + vmods
+# Varnish binaries + shared libs + vmods
 COPY --link --from=prep /usr/sbin/varnishd /usr/sbin/
 COPY --link --from=prep /usr/bin/varnishadm /usr/bin/
 COPY --link --from=prep /usr/bin/varnishlog /usr/bin/
@@ -153,6 +156,7 @@ COPY --link --from=prep /usr/bin/varnishstat /usr/bin/
 COPY --link --from=prep /usr/bin/varnishncsa /usr/bin/
 COPY --link --from=prep /usr/bin/varnishhist /usr/bin/
 COPY --link --from=prep /usr/bin/varnishtop /usr/bin/
+COPY --link --from=prep /usr/lib/libvarnishapi.so* /usr/lib/
 COPY --link --from=prep /usr/lib/varnish/ /usr/lib/varnish/
 
 # Go init (entrypoint + healthcheck)

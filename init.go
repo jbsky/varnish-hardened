@@ -39,6 +39,16 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "--export-tools":
+			dest := "/tools"
+			if len(os.Args) > 2 {
+				dest = os.Args[2]
+			}
+			if err := exportTools(dest); err != nil {
+				fmt.Fprintf(os.Stderr, "[init][ERROR] export-tools: %v\n", err)
+				os.Exit(1)
+			}
+			return
 		}
 	}
 	if err := entrypoint(); err != nil {
@@ -198,4 +208,38 @@ func execProcess(args []string) error {
 
 func log(format string, a ...any) {
 	fmt.Printf("[init] "+format+"\n", a...)
+}
+
+// ---------------------------------------------------------------------------
+// Export tools: copy varnishadm and varnishstat to a shared volume so that
+// sidecar containers (busybox) can use them for hot-reload and monitoring.
+// Called by an init-container: init --export-tools /var/lib/varnish
+// ---------------------------------------------------------------------------
+
+func exportTools(dest string) error {
+	tools := []string{
+		"/usr/bin/varnishadm",
+		"/usr/bin/varnishstat",
+	}
+
+	if err := os.MkdirAll(dest, 0755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", dest, err)
+	}
+
+	for _, src := range tools {
+		if !fileExists(src) {
+			log("skip %s (not found)", src)
+			continue
+		}
+		data, err := os.ReadFile(src)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", src, err)
+		}
+		dstPath := dest + "/" + src[strings.LastIndex(src, "/")+1:]
+		if err := os.WriteFile(dstPath, data, 0755); err != nil {
+			return fmt.Errorf("write %s: %w", dstPath, err)
+		}
+		log("exported %s -> %s (%d bytes)", src, dstPath, len(data))
+	}
+	return nil
 }

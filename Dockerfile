@@ -13,6 +13,15 @@ ENV CFLAGS="-O2 -fstack-protector-strong -fstack-clash-protection -fPIE -D_FORTI
     CXXFLAGS="-O2 -fstack-protector-strong -fstack-clash-protection -fPIE -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security" \
     LDFLAGS="-Wl,-z,relro,-z,now,-z,noexecstack -pie"
 
+# Proxy-aware: HTTP repos for SSL Bump compatibility
+RUN sed -i 's|https://|http://|g' /etc/apk/repositories
+
+# Proxy-aware CA injection
+RUN --mount=type=secret,id=ca-certs,required=false \
+    if [ -f /run/secrets/ca-certs ]; then \
+        cat /run/secrets/ca-certs >> /etc/ssl/certs/ca-certificates.crt; \
+    fi
+
 # Build dependencies
 RUN --mount=type=cache,target=/var/cache/apk \
     apk add --no-cache \
@@ -70,6 +79,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags='-s -w' -trimpath -o /init .
 
 # --- Stage 3: Prep — assemble runtime filesystem -----------------------
 FROM alpine:${ALPINE_VERSION} AS prep
+
+# Proxy-aware: HTTP repos
+RUN sed -i 's|https://|http://|g' /etc/apk/repositories
 
 # Runtime libraries only (no compilers, no package manager in final)
 RUN --mount=type=cache,target=/var/cache/apk \

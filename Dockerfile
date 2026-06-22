@@ -21,19 +21,18 @@ RUN --mount=type=cache,target=/var/cache/apk \
         pcre2-dev libedit-dev ncurses-dev jemalloc-dev linux-headers \
         libunwind-dev
 
-# Build TCC from source (mob branch — only compiler + minimal runtime)
-# libtcc1 built without bcheck (incompatible with musl 1.2+)
+# Build TCC from source (mob branch — compiler + empty libtcc1.a stub)
+# VCL shared libs don't need libtcc1 symbols, but TCC requires the file to exist
 RUN unset CFLAGS CXXFLAGS LDFLAGS \
     && apk add --no-cache git \
     && git clone --depth=1 https://repo.or.cz/tinycc.git /tcc-src \
     && cd /tcc-src \
     && ./configure --prefix=/usr \
     && make tcc \
-    && make -C lib BCHECK_O= libtcc1.a || true \
     && mkdir -p /tcc-out/usr/bin /tcc-out/usr/lib/tcc \
     && cp tcc /tcc-out/usr/bin/tcc \
     && strip /tcc-out/usr/bin/tcc \
-    && (cp lib/libtcc1.a /tcc-out/usr/lib/tcc/ 2>/dev/null || true)
+    && ar rcs /tcc-out/usr/lib/tcc/libtcc1.a
 
 # Download and extract Varnish source
 RUN --mount=type=secret,id=ca-certs,required=false \

@@ -41,9 +41,10 @@ jobs:
           CURRENT=$(jq -r '.varnish' versions.json)
           echo "current=${CURRENT}" >> "$GITHUB_OUTPUT"
 
-          # Latest stable from varnish-cache.org
-          LATEST=$(curl -fsSL https://varnish-cache.org/releases/ \
-            | grep -oP 'varnish-\K[0-9]+\.[0-9]+\.[0-9]+' \
+          # Latest stable from GitHub tags (varnishcache/varnish-cache)
+          LATEST=$(curl -fsSL "https://api.github.com/repos/varnishcache/varnish-cache/tags?per_page=100" \
+            | jq -r '.[].name' \
+            | grep -oP '^varnish-\K[0-9]+\.[0-9]+\.[0-9]+$' \
             | sort -V | tail -1)
           echo "latest=${LATEST}" >> "$GITHUB_OUTPUT"
 

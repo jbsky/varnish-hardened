@@ -3,10 +3,14 @@
 #  4-stage: builder → gobuilder → prep → scratch
 # =====================================================================
 ARG VARNISH_VERSION=7.7.3
+# ALPINE_VERSION kept for check-versions.sh/versions.json reference only --
+# the FROM lines below pin tag+digest together as a literal so a version
+# bump requires deliberately re-resolving the digest, not a silent drift
+# if this ARG changes without the pin being updated to match.
 ARG ALPINE_VERSION=3.21
 
 # --- Stage 1: Build Varnish + TCC from source --------------------------
-FROM alpine:${ALPINE_VERSION} AS builder
+FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS builder
 
 ARG VARNISH_VERSION
 ENV CFLAGS="-O2 -fstack-protector-strong -fstack-clash-protection -fPIE -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security" \
@@ -71,14 +75,14 @@ RUN mkdir -p /out/usr/include/varnish \
     && cp -a include/*.h /out/usr/include/varnish/ 2>/dev/null || true
 
 # --- Stage 2: Go init binary -------------------------------------------
-FROM golang:1.24-alpine AS gobuilder
+FROM golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191 AS gobuilder
 
 WORKDIR /src
 COPY go.mod init.go ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags='-s -w' -trimpath -o /init .
 
 # --- Stage 3: Prep — assemble runtime filesystem -----------------------
-FROM alpine:${ALPINE_VERSION} AS prep
+FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS prep
 
 # Proxy-aware: HTTP repos
 RUN sed -i 's|https://|http://|g' /etc/apk/repositories

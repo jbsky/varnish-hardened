@@ -53,10 +53,11 @@ jobs:
 
       - name: Grype cross-check
         id: grype
+        continue-on-error: true
         uses: anchore/scan-action@v5
         with:
           image: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
-          fail-build: 'false'
+          fail-build: 'true'
           severity-cutoff: high
           only-fixed: true
 
@@ -73,7 +74,7 @@ jobs:
             --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
       - name: Create issue on failure
-        if: steps.verify.outcome == 'failure'
+        if: steps.grype.outcome == 'failure' || steps.verify.outcome == 'failure'
         uses: actions/github-script@v7
         with:
           script: |

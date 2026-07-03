@@ -17,6 +17,7 @@ env:
 permissions:
   contents: write
   packages: read
+  actions: write
 
 jobs:
   check:
@@ -77,3 +78,15 @@ jobs:
 
           echo "### Triggered rebuild" >> "$GITHUB_STEP_SUMMARY"
           echo "- Tag: ${TAG}" >> "$GITHUB_STEP_SUMMARY"
+
+      # A push made with the default GITHUB_TOKEN never fires other
+      # `on: push` workflows (GitHub's anti-recursion guard), and the
+      # auto-tag above doesn't match build-push's `v*.*.*` tag pattern
+      # either — so build-push.yml would otherwise never run after a
+      # version bump. An explicit dispatch via the API is not subject
+      # to that restriction.
+      - name: Trigger build-push
+        if: steps.compare.outputs.outdated == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run build-push.yml --ref main

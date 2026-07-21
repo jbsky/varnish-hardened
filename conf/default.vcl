@@ -9,10 +9,20 @@ backend default {
 }
 
 sub vcl_recv {
+    # Reject dangerous/non-standard methods before they ever reach a backend
+    # (mirrors the production VCL's intent -- see front-home/overlay/varnish).
+    if (req.method == "TRACE") {
+        return (synth(405, "Method Not Allowed"));
+    }
+
     # Healthcheck endpoint (always synthetic 200)
     if (req.url == "/healthcheck") {
         return (synth(200, "OK"));
     }
+}
+
+sub vcl_deliver {
+    unset resp.http.Via;
 }
 
 sub vcl_synth {

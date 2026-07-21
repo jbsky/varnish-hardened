@@ -28,5 +28,10 @@ services:
     volumes:
       - ./conf/default.vcl:/etc/varnish/default.vcl:ro
     tmpfs:
-      - /var/lib/varnish:nodev,nosuid,noexec,size=256m
-      - /tmp:nodev,nosuid,noexec,size=16m
+      # varnishd mmaps an executable VSM (shared memory log) in its working
+      # directory (-n) -- noexec here makes it refuse to start outright
+      # ("cannot reside on a file system mounted noexec"). mode=1777 is
+      # required too: without it the mount defaults to root:root 0755,
+      # which the non-root varnish user (uid 6081) can't write into.
+      - /var/lib/varnish:nodev,nosuid,exec,size=256m,mode=1777
+      - /tmp:nodev,nosuid,noexec,size=16m,mode=1777

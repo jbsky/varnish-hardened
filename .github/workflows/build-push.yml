@@ -52,9 +52,43 @@ jobs:
           scandir: ./scripts
 
   # -------------------------------------------------------------------
+  test:
+    name: Functional tests
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & start stack
+        run: docker compose up -d --build varnish
+
+      - name: Wait for healthy
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 30); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q varnish)" 2>/dev/null || echo "starting")
+            [ "$status" = "healthy" ] && exit 0
+            sleep 2
+          done
+          echo "::error::varnish did not become healthy in time"
+          docker compose logs
+          exit 1
+
+      - name: Run smoke tests
+        run: ./scripts/test.sh 127.0.0.1 8080
+
+      - name: Container logs (on failure)
+        if: failure()
+        run: docker compose logs
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v
+
+  # -------------------------------------------------------------------
   build:
     name: Build & Push
-    needs: lint
+    needs: [lint, test]
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
     outputs:

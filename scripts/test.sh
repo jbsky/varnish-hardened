@@ -32,6 +32,30 @@ check_header() {
     fi
 }
 
+check_method() {
+    local desc="$1" expected="$2" method="$3" url="$4"
+    actual=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 -X "$method" "${url}" 2>/dev/null || echo "000")
+    if [ "$actual" = "$expected" ]; then
+        printf "  \033[32mPASS\033[0m %s (HTTP %s)\n" "$desc" "$actual"
+        PASS=$((PASS + 1))
+    else
+        printf "  \033[31mFAIL\033[0m %s (expected %s, got %s)\n" "$desc" "$expected" "$actual"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+check_header_absent() {
+    local desc="$1" header="$2" url="$3"
+    val=$(curl -s -D - --max-time 5 "${url}" 2>/dev/null | grep -i "^${header}:" | head -1)
+    if [ -z "$val" ]; then
+        printf "  \033[32mPASS\033[0m %s\n" "$desc"
+        PASS=$((PASS + 1))
+    else
+        printf "  \033[31mFAIL\033[0m %s (found: %s)\n" "$desc" "$val"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
 echo ""
 echo "=== Varnish Hardened Test Suite ==="
 echo "Target: ${BASE}"
@@ -43,8 +67,8 @@ check_header "/healthcheck has Content-Type" "Content-Type" "${BASE}/healthcheck
 
 echo ""
 echo "--- Security ---"
-check "TRACE method blocked" "405" "${BASE}/"
-check_header "No Via header exposed" "X-Cache" "${BASE}/healthcheck"
+check_method "TRACE method blocked" "405" "TRACE" "${BASE}/"
+check_header_absent "No Via header exposed" "Via" "${BASE}/healthcheck"
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

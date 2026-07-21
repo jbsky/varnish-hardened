@@ -65,12 +65,14 @@ jobs:
       - name: Wait for healthy
         run: |
           set -euo pipefail
+          cid="$(docker compose ps -q varnish)"
           for _ in $(seq 1 30); do
-            status=$(docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q varnish)" 2>/dev/null || echo "starting")
+            status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "starting")
             [ "$status" = "healthy" ] && exit 0
             sleep 2
           done
           echo "::error::varnish did not become healthy in time"
+          docker inspect --format '{{json .State.Health}}' "$cid" || true
           docker compose logs
           exit 1
 

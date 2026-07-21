@@ -36,6 +36,7 @@ RUN --mount=type=cache,target=/var/cache/apk \
 
 # Build TCC from source (mob branch — compiler + empty libtcc1.a stub)
 # VCL shared libs don't need libtcc1 symbols, but TCC requires the file to exist
+# hadolint ignore=DL3003
 RUN unset CFLAGS CXXFLAGS LDFLAGS \
     && apk add --no-cache git \
     && git clone --depth=1 https://repo.or.cz/tinycc.git /tcc-src \
@@ -127,7 +128,10 @@ RUN mkdir -p /var/lib/varnish /etc/varnish /tmp \
 # Default minimal VCL
 RUN printf 'vcl 4.1;\nbackend default none;\n' > /etc/varnish/default.vcl
 
-# Busybox symlinks for varnishd system() calls (MUST be last — breaks /bin/sh)
+# Busybox symlinks for varnishd system() calls (MUST be last — breaks /bin/sh).
+# This is the container's *runtime* /bin/sh (what varnishd's system() calls
+# use once shipped), not the build-time shell -- SHELL wouldn't apply here.
+# hadolint ignore=DL4005
 RUN cp /bin/busybox /bin/busybox-varnish \
     && rm -f /bin/sh /bin/rm \
     && ln -s /bin/busybox-varnish /bin/sh \

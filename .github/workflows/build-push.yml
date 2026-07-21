@@ -183,6 +183,13 @@ jobs:
           push-to-registry: true
 
   # -------------------------------------------------------------------
+  cleanup:
+    name: Prune old registry tags
+    needs: build
+    uses: ./.github/workflows/registry-cleanup.yml
+    secrets: inherit
+
+  # -------------------------------------------------------------------
   release:
     name: GitHub Release
     needs: build

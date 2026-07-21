@@ -15,8 +15,15 @@ sub vcl_recv {
         return (synth(405, "Method Not Allowed"));
     }
 
-    # Healthcheck endpoint (always synthetic 200)
-    if (req.url == "/healthcheck") {
+    # Healthcheck endpoint (always synthetic 200). Two paths on purpose:
+    # /healthcheck is what scripts/test.sh curls, /__health is what the Go
+    # init's own --healthcheck (and Docker's HEALTHCHECK, which drives
+    # `docker inspect`'s Health.Status) queries by default -- production's
+    # real VCL (front-home/varnish/templates/statefulset.yaml) already
+    # handles /__health; this dev/test VCL never did, so the container's
+    # own healthcheck has been permanently failing (503, no backend) even
+    # though scripts/test.sh's direct /healthcheck check always passed.
+    if (req.url == "/healthcheck" || req.url == "/__health") {
         return (synth(200, "OK"));
     }
 }

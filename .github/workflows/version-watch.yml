@@ -18,6 +18,7 @@ permissions:
   contents: write
   packages: read
   actions: write
+  workflows: write
 
 jobs:
   check:

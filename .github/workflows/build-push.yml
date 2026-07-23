@@ -53,16 +53,17 @@ jobs:
 
   # -------------------------------------------------------------------
   #  Builds the image once. On a real push/tag (never on pull_request --
-  #  fork PRs must not get registry credentials) it's pushed BY DIGEST,
-  #  pulled back by that exact digest, and the functional tests run
-  #  against those literal bytes -- not a separately-built image that
-  #  "should" match thanks to cache. `promote` below re-tags/signs/scans
-  #  that same digest; nothing gets rebuilt between "tested" and "shipped".
-  #  On a PR, PUBLISH is false: `load: true` only, validates the code with
-  #  no registry credentials in play.
+  #  fork PRs must not get registry credentials) it's pushed BY DIGEST, so
+  #  `test` below can pull back that exact digest and run the functional
+  #  tests against those literal bytes -- not a separately-built image that
+  #  "should" match thanks to cache. `promote` re-tags/signs/scans that
+  #  same digest; nothing gets rebuilt between "tested" and "shipped". On a
+  #  PR there's no registry to push to, so the image is instead exported to
+  #  a local tarball and handed to `test` (a separate job/runner) as an
+  #  artifact.
   # -------------------------------------------------------------------
-  test:
-    name: Functional tests
+  build:
+    name: Build image
     needs: lint
     runs-on: ubuntu-latest
     outputs:
@@ -92,14 +93,17 @@ jobs:
           echo "varnish=${VARNISH_VER}" >> "$GITHUB_OUTPUT"
           echo "alpine=${ALPINE_VER}" >> "$GITHUB_OUTPUT"
 
-      - name: Build (load or push-by-digest)
+      - name: Make room for local tarball export (PR only)
+        if: env.PUBLISH != 'true'
+        run: mkdir -p /tmp/image-tar
+
+      - name: Build (push-by-digest, or local tarball on PR)
         id: build
         uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64
-          load: ${{ env.PUBLISH != 'true' }}
-          outputs: ${{ env.PUBLISH == 'true' && format('type=image,name={0}/{1}/{2},push-by-digest=true,name-canonical=true,push=true', env.REGISTRY, env.NAMESPACE, env.IMAGE_NAME) || '' }}
+          outputs: ${{ env.PUBLISH == 'true' && format('type=image,name={0}/{1}/{2},push-by-digest=true,name-canonical=true,push=true', env.REGISTRY, env.NAMESPACE, env.IMAGE_NAME) || 'type=docker,dest=/tmp/image-tar/image.tar' }}
           tags: ${{ env.PUBLISH != 'true' && format('localhost/{0}:latest', env.IMAGE_NAME) || '' }}
           sbom: ${{ env.PUBLISH }}
           provenance: ${{ env.PUBLISH == 'true' && 'mode=max' || 'false' }}
@@ -109,12 +113,54 @@ jobs:
           cache-from: type=gha,scope=varnish
           cache-to: type=gha,mode=max,scope=varnish
 
-      - name: Pull back pushed digest for testing
+      - name: Upload image tarball (PR only, for the test job)
+        if: env.PUBLISH != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: image-tar
+          path: /tmp/image-tar/image.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  # -------------------------------------------------------------------
+  #  Loads the exact bytes `build` just produced (pulled by digest from
+  #  the registry, or loaded from its tarball artifact on a PR) and runs
+  #  the functional tests against them.
+  # -------------------------------------------------------------------
+  test:
+    name: Functional tests
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      PUBLISH: ${{ github.event_name != 'pull_request' && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Login ghcr.io
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull built digest for testing
         if: env.PUBLISH == 'true'
         run: |
           set -euo pipefail
-          docker pull "${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
-          docker tag  "${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}" "localhost/${{ env.IMAGE_NAME }}:latest"
+          docker pull "${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          docker tag  "${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}" "localhost/${{ env.IMAGE_NAME }}:latest"
+
+      - name: Download image tarball (PR only)
+        if: env.PUBLISH != 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: image-tar
+          path: /tmp/image-tar
+
+      - name: Load image tarball (PR only)
+        if: env.PUBLISH != 'true'
+        run: docker load -i /tmp/image-tar/image.tar
 
       - name: Build & start stack
         run: docker compose up -d --no-build varnish
@@ -145,13 +191,13 @@ jobs:
         run: docker compose down -v
 
   # -------------------------------------------------------------------
-  #  Re-tags the exact digest `test` already pushed and functionally
-  #  tested -- no rebuild. imagetools create also copies it to Docker Hub
-  #  when configured (cross-registry manifest copy, no local pull needed).
+  #  Re-tags the exact digest `build` pushed and `test` just verified --
+  #  no rebuild. imagetools create also copies it to Docker Hub when
+  #  configured (cross-registry manifest copy, no local pull needed).
   # -------------------------------------------------------------------
-  build:
+  promote:
     name: Promote tested digest
-    needs: [lint, test]
+    needs: [build, test]
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
     outputs:
@@ -218,7 +264,7 @@ jobs:
         id: manifest
         run: |
           set -euo pipefail
-          SOURCE="${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}@${{ needs.test.outputs.digest }}"
+          SOURCE="${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
           TAGS=""
           while IFS= read -r tag; do
             [ -n "$tag" ] && TAGS="${TAGS} -t ${tag}"
@@ -270,14 +316,14 @@ jobs:
   # -------------------------------------------------------------------
   cleanup:
     name: Prune old registry tags
-    needs: build
+    needs: promote
     uses: ./.github/workflows/registry-cleanup.yml
     secrets: inherit
 
   # -------------------------------------------------------------------
   release:
     name: GitHub Release
-    needs: build
+    needs: promote
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:

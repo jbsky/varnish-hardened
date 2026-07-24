@@ -18,7 +18,6 @@ permissions:
   contents: write
   packages: read
   actions: write
-  workflows: write
 
 jobs:
   check:
@@ -60,7 +59,8 @@ jobs:
             echo "### Up to date (${CURRENT})" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Update versions.json and trigger rebuild
+      - name: Update versions.json and push
+        id: bump
         if: steps.compare.outputs.outdated == 'true'
         env:
           LATEST: ${{ steps.compare.outputs.latest }}
@@ -71,14 +71,35 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add versions.json
           git commit -m "chore: bump varnish to ${LATEST}"
+          git push origin main
 
-          # Auto-tag
           TAG="auto-$(date +%Y%m%d).1"
-          git tag "$TAG"
-          git push origin main --tags
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
           echo "### Triggered rebuild" >> "$GITHUB_STEP_SUMMARY"
           echo "- Tag: ${TAG}" >> "$GITHUB_STEP_SUMMARY"
+
+      # Creating the tag via `git push`/`git tag` would go through git's
+      # pre-receive hook, which refuses any GITHUB_TOKEN push of a
+      # brand-new ref whose tree contains .github/workflows/* (even
+      # unchanged content already on main) unless the token has
+      # `workflows` permission — a permission GITHUB_TOKEN can never be
+      # granted. action-gh-release creates the tag via the Releases REST
+      # API instead, a separate code path that only needs
+      # `contents: write` as long as the tag targets the current branch
+      # tip (not an older commit) — same pattern as nginx-hardened.
+      - name: Create GitHub Release (auto-tag)
+        if: steps.compare.outputs.outdated == 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.bump.outputs.tag }}
+          name: "Auto-update: Varnish ${{ steps.compare.outputs.latest }}"
+          body: |
+            ## Automatic rebuild triggered by upstream version change
+
+            Varnish: ${{ steps.compare.outputs.current }} → ${{ steps.compare.outputs.latest }}
+          generate_release_notes: false
+          prerelease: true
 
       # A push made with the default GITHUB_TOKEN never fires other
       # `on: push` workflows (GitHub's anti-recursion guard), and the

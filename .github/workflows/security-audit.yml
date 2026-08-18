@@ -54,7 +54,7 @@ jobs:
       - name: Grype cross-check
         id: grype
         continue-on-error: true
-        uses: anchore/scan-action@v5
+        uses: anchore/scan-action@v7
         with:
           image: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
           fail-build: 'true'

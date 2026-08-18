@@ -7,7 +7,7 @@ ARG VARNISH_VERSION=7.7.3
 # the FROM lines below pin tag+digest together as a literal so a version
 # bump requires deliberately re-resolving the digest, not a silent drift
 # if this ARG changes without the pin being updated to match.
-ARG ALPINE_VERSION=3.21
+ARG ALPINE_VERSION=3.24
 # TCC ships no release tarball -- upstream publishes the `mob` branch only,
 # so this build used to compile whatever mob HEAD happened to be that day:
 # not reproducible, and a silent path for upstream changes into a compiler

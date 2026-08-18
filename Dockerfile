@@ -39,7 +39,13 @@ RUN --mount=type=cache,target=/var/cache/apk \
 # hadolint ignore=DL3003
 RUN unset CFLAGS CXXFLAGS LDFLAGS \
     && apk add --no-cache git \
-    && git clone --depth=1 https://repo.or.cz/tinycc.git /tcc-src \
+    && for attempt in 1 2 3; do \
+         rm -rf /tcc-src; \
+         timeout 120 git clone --depth=1 https://repo.or.cz/tinycc.git /tcc-src && break; \
+         echo "tinycc clone attempt ${attempt} failed"; \
+         [ "$attempt" = 3 ] && exit 1; \
+         sleep 15; \
+       done \
     && cd /tcc-src \
     && ./configure --prefix=/usr \
     && make tcc \

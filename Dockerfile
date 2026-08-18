@@ -8,11 +8,18 @@ ARG VARNISH_VERSION=7.7.3
 # bump requires deliberately re-resolving the digest, not a silent drift
 # if this ARG changes without the pin being updated to match.
 ARG ALPINE_VERSION=3.21
+# TCC ships no release tarball -- upstream publishes the `mob` branch only,
+# so this build used to compile whatever mob HEAD happened to be that day:
+# not reproducible, and a silent path for upstream changes into a compiler
+# that ends up inside the published image. Pinned to an exact commit; bump
+# it deliberately (`git ls-remote https://repo.or.cz/tinycc.git mob`).
+ARG TCC_COMMIT=2ba12e83b3599ca8f5d50c179fe5138fe956f0c9
 
 # --- Stage 1: Build Varnish + TCC from source --------------------------
 FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS builder
 
 ARG VARNISH_VERSION
+ARG TCC_COMMIT
 ENV CFLAGS="-O2 -fstack-protector-strong -fstack-clash-protection -fPIE -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security" \
     CXXFLAGS="-O2 -fstack-protector-strong -fstack-clash-protection -fPIE -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security" \
     LDFLAGS="-Wl,-z,relro,-z,now,-z,noexecstack -pie"
@@ -34,18 +41,25 @@ RUN --mount=type=cache,target=/var/cache/apk \
         pcre2-dev libedit-dev ncurses-dev jemalloc-dev linux-headers \
         libunwind-dev
 
-# Build TCC from source (mob branch — compiler + empty libtcc1.a stub)
-# VCL shared libs don't need libtcc1 symbols, but TCC requires the file to exist
+# Build TCC from source (pinned mob commit — compiler + empty libtcc1.a stub)
+# VCL shared libs don't need libtcc1 symbols, but TCC requires the file to exist.
+# `fetch --depth=1 <sha>` keeps it a shallow fetch while pinning exactly: git
+# verifies the object hashes, so the pin is the integrity check. repo.or.cz is
+# a single point of failure (it was down for hours on 2026-08-18 and took
+# unrelated PR builds with it), hence the bounded retries.
 # hadolint ignore=DL3003
 RUN unset CFLAGS CXXFLAGS LDFLAGS \
     && apk add --no-cache git \
+    && mkdir -p /tcc-src \
+    && git -C /tcc-src init -q \
+    && git -C /tcc-src remote add origin https://repo.or.cz/tinycc.git \
     && for attempt in 1 2 3; do \
-         rm -rf /tcc-src; \
-         timeout 120 git clone --depth=1 https://repo.or.cz/tinycc.git /tcc-src && break; \
-         echo "tinycc clone attempt ${attempt} failed"; \
+         timeout 120 git -C /tcc-src fetch --depth=1 origin "${TCC_COMMIT}" && break; \
+         echo "tinycc fetch attempt ${attempt} failed"; \
          [ "$attempt" = 3 ] && exit 1; \
          sleep 15; \
        done \
+    && git -C /tcc-src checkout -q FETCH_HEAD \
     && cd /tcc-src \
     && ./configure --prefix=/usr \
     && make tcc \

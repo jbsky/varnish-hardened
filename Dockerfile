@@ -16,7 +16,7 @@ ARG ALPINE_VERSION=3.21
 ARG TCC_COMMIT=2ba12e83b3599ca8f5d50c179fe5138fe956f0c9
 
 # --- Stage 1: Build Varnish + TCC from source --------------------------
-FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS builder
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS builder
 
 ARG VARNISH_VERSION
 ARG TCC_COMMIT
@@ -103,7 +103,7 @@ COPY go.mod init.go ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags='-s -w' -trimpath -o /init .
 
 # --- Stage 3: Prep — assemble runtime filesystem -----------------------
-FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS prep
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS prep
 
 # Proxy-aware: HTTP repos
 RUN sed -i 's|https://|http://|g' /etc/apk/repositories

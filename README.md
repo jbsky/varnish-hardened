@@ -30,7 +30,7 @@ inaccessible. **En production, epinglez le tag qui porte le compteur.**
 <!-- BEGIN:tags (genere par la CI -- ne pas editer a la main) -->
 | Image | Version amont | Tag immuable a epingler |
 |-------|---------------|-------------------------|
-| `jbsky/varnish-hardened` | `8.0.0` | `8.0.0.15` |
+| `jbsky/varnish-hardened` | `8.0.0` | `8.0.0.16` |
 <!-- END:tags -->
 
 Le compteur compte les commits qui touchent les inputs de l'image (`Dockerfile`, `init.go`, `go.mod`, `conf/`, `scripts/`, `versions.json`)

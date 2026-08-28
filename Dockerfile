@@ -169,6 +169,34 @@ RUN mkdir -p /var/lib/varnish /etc/varnish /tmp \
 # Default minimal VCL
 RUN printf 'vcl 4.1;\nbackend default none;\n' > /etc/varnish/default.vcl
 
+# Collect exactly the shared objects that ship, instead of copying /lib and
+# /usr/lib whole into the final stage -- the wholesale copy also carried
+# /lib/apk/db/installed and libapk.so, a package inventory and the package
+# manager's library, into an image that is supposed to have neither.
+#
+# lddtree -l prints each binary, its transitive dependencies, symlinks together
+# with their targets, and the loader for the architecture being built, so
+# nothing hardcodes ld-musl-x86_64.so.1. VMODs are dlopen'd, so they are listed
+# as roots rather than discovered. This must run while /bin/sh is still the
+# build shell, i.e. before the busybox step below.
+RUN --mount=type=cache,target=/var/cache/apk \
+    apk add --no-cache lddtree \
+ && mkdir -p /rootfs \
+ && lddtree -l \
+      /usr/sbin/varnishd /usr/bin/varnishadm /usr/bin/varnishlog \
+      /usr/bin/varnishstat /usr/bin/varnishncsa /usr/bin/varnishhist \
+      /usr/bin/varnishtop /usr/bin/tcc /bin/busybox \
+      /usr/lib/libvarnishapi.so /usr/lib/varnish/*.so > /tmp/closure.list \
+ && sort -u /tmp/closure.list -o /tmp/closure.list \
+ && tar -cf /tmp/closure.tar -T /tmp/closure.list \
+ && tar -xf /tmp/closure.tar -C /rootfs \
+ && rm -f /tmp/closure.list /tmp/closure.tar
+
+# libtcc1.a is not an ELF dependency -- tcc needs the file on disk to link the
+# shared objects it compiles from VCL, so no closure will ever list it.
+RUN mkdir -p /rootfs/usr/lib \
+ && cp -a /usr/lib/tcc /rootfs/usr/lib/
+
 # Busybox symlinks for varnishd system() calls (MUST be last — breaks /bin/sh).
 # This is the container's *runtime* /bin/sh (what varnishd's system() calls
 # use once shipped), not the build-time shell -- SHELL wouldn't apply here.
@@ -197,9 +225,9 @@ COPY --link --from=prep /etc/group /etc/group
 COPY --link --from=prep /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --link --from=prep /usr/share/zoneinfo/ /usr/share/zoneinfo/
 
-# Dynamic linker + all runtime libraries
-COPY --link --from=prep /lib/ /lib/
-COPY --link --from=prep /usr/lib/ /usr/lib/
+# Runtime closure: loader, shared libraries and their symlinks, resolved at
+# build time by lddtree in prep -- not /lib and /usr/lib whole
+COPY --link --from=prep /rootfs/ /
 
 # musl-dev headers (needed by TCC for VCL → C → .so)
 COPY --link --from=prep /usr/include/ /usr/include/

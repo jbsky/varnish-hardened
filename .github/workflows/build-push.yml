@@ -15,6 +15,12 @@ on:
       - 'go.mod'
       - 'conf/**'
       - 'scripts/**'
+      # versions.json drives the build-args and the tag; docker-compose.yml and
+      # the Makefile drive the functional-test job. Leaving them out meant a
+      # change to any of them shipped without ever being built or tested.
+      - 'versions.json'
+      - 'docker-compose.yml'
+      - 'Makefile'
       - '.github/workflows/build-push.yml'
   pull_request:
     branches: [main]

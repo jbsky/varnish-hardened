@@ -89,8 +89,12 @@ jobs:
         run: |
           set -euo pipefail
           VARNISH_VER=$(jq -r '.varnish' versions.json)
+          VARNISH_SHA=$(jq -r '.varnish_sha256' versions.json)
           ALPINE_VER=$(jq -r '.alpine' versions.json)
+          test -n "$VARNISH_SHA" -a "$VARNISH_SHA" != "null" \
+            || { echo "versions.json has no .varnish_sha256 -- the build would have no integrity check" >&2; exit 1; }
           echo "varnish=${VARNISH_VER}" >> "$GITHUB_OUTPUT"
+          echo "varnish_sha256=${VARNISH_SHA}" >> "$GITHUB_OUTPUT"
           echo "alpine=${ALPINE_VER}" >> "$GITHUB_OUTPUT"
 
       - name: Make room for local tarball export (PR only)
@@ -109,6 +113,7 @@ jobs:
           provenance: ${{ env.PUBLISH == 'true' && 'mode=max' || 'false' }}
           build-args: |
             VARNISH_VERSION=${{ steps.versions.outputs.varnish }}
+            VARNISH_SHA256=${{ steps.versions.outputs.varnish_sha256 }}
             ALPINE_VERSION=${{ steps.versions.outputs.alpine }}
           cache-from: type=gha,scope=varnish
           cache-to: type=gha,mode=max,scope=varnish

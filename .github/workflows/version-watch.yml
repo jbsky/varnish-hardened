@@ -65,12 +65,24 @@ jobs:
         env:
           LATEST: ${{ steps.compare.outputs.latest }}
         run: |
-          jq --arg v "$LATEST" '.varnish = $v' versions.json > versions.json.tmp
+          # The Dockerfile verifies the tarball against .varnish_sha256, so a bump
+          # that moved .varnish alone would fail every later build. Upstream
+          # publishes no checksum file, so hash the tarball here and write both
+          # fields in the same commit -- they must never move separately.
+          # Download to a file first: `curl | sha256sum` returns sha256sum's exit
+          # code, which succeeds on an empty stream.
+          TGZ="varnish-${LATEST}.tgz"
+          curl -fsSL -o "/tmp/${TGZ}" "https://varnish-cache.org/_downloads/${TGZ}"
+          SHA=$(sha256sum "/tmp/${TGZ}" | cut -d' ' -f1)
+          rm -f "/tmp/${TGZ}"
+          test -n "$SHA" || { echo "empty sha256 for ${TGZ}" >&2; exit 1; }
+
+          jq --arg v "$LATEST" --arg s "$SHA" '.varnish = $v | .varnish_sha256 = $s' versions.json > versions.json.tmp
           mv versions.json.tmp versions.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add versions.json
-          git commit -m "chore: bump varnish to ${LATEST}"
+          git commit -m "chore: bump varnish to ${LATEST} (sha256 ${SHA})"
           git push origin main
 
           TAG="auto-$(date +%Y%m%d).1"

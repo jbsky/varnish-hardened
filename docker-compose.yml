@@ -19,6 +19,7 @@ services:
       args:
         # Read from versions.json by `make build` -- never hardcoded here.
         VARNISH_VERSION: ${VARNISH_VERSION:?run `make build`, which reads versions.json}
+        VARNISH_SHA256: ${VARNISH_SHA256:?run `make build`, which reads versions.json}
     image: localhost/varnish-hardened:latest
     <<: *common-security
     ports:

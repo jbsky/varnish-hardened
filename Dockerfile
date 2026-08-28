@@ -9,6 +9,13 @@
 # name. CI and the Makefile both pass it explicitly, and a bare `docker build`
 # now fails with a message instead of building the wrong version.
 ARG VARNISH_VERSION
+# Upstream publishes neither a signature nor a checksum file next to the
+# tarball (.asc, .sig and .sha256sum are all 404), so the integrity check is a
+# sha256 pinned in versions.json -- the same fallback used for c-icap. It is
+# recomputed by version-watch in the same commit as a version bump, never on
+# its own: a hash that lags its version fails the build closed, which is the
+# intended behaviour but only if the two always move together.
+ARG VARNISH_SHA256
 # ALPINE_VERSION kept for check-versions.sh/versions.json reference only --
 # the FROM lines below pin tag+digest together as a literal so a version
 # bump requires deliberately re-resolving the digest, not a silent drift
@@ -25,14 +32,15 @@ ARG TCC_COMMIT=2ba12e83b3599ca8f5d50c179fe5138fe956f0c9
 FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS builder
 
 ARG VARNISH_VERSION
+ARG VARNISH_SHA256
 ARG TCC_COMMIT
 ENV CFLAGS="-O2 -fstack-protector-strong -fstack-clash-protection -fPIE -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security" \
     CXXFLAGS="-O2 -fstack-protector-strong -fstack-clash-protection -fPIE -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security" \
     LDFLAGS="-Wl,-z,relro,-z,now,-z,noexecstack -pie"
 
 # Fail before the (long) TCC build rather than after it
-RUN test -n "${VARNISH_VERSION}" \
-    || { echo "VARNISH_VERSION build-arg is required: jq -r .varnish versions.json" >&2; exit 1; }
+RUN test -n "${VARNISH_VERSION}" -a -n "${VARNISH_SHA256}" \
+    || { echo "VARNISH_VERSION and VARNISH_SHA256 build-args are required: jq -r '.varnish, .varnish_sha256' versions.json" >&2; exit 1; }
 
 # Proxy-aware: HTTP repos for SSL Bump compatibility
 RUN sed -i 's|https://|http://|g' /etc/apk/repositories
@@ -82,6 +90,9 @@ RUN unset CFLAGS CXXFLAGS LDFLAGS \
 RUN --mount=type=secret,id=ca-certs,required=false \
     if [ -f /run/secrets/ca-certs ]; then cat /run/secrets/ca-certs >> /etc/ssl/certs/ca-certificates.crt; fi \
     && wget -q "https://varnish-cache.org/_downloads/varnish-${VARNISH_VERSION}.tgz" \
+    && printf '%s  varnish-%s.tgz\n' "${VARNISH_SHA256}" "${VARNISH_VERSION}" > varnish.sha256 \
+    && sha256sum -c varnish.sha256 \
+    && rm varnish.sha256 \
     && tar xzf "varnish-${VARNISH_VERSION}.tgz"
 
 # Compile Varnish with hardening flags

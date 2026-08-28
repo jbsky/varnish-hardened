@@ -2,6 +2,11 @@
 
 DC := docker compose
 
+# versions.json is the single source of truth for the Varnish version --
+# the Dockerfile has no default, so it has to be passed in.
+VARNISH_VERSION := $(shell jq -r .varnish versions.json)
+export VARNISH_VERSION
+
 help:
 	@echo "Cibles disponibles :"
 	@echo "  make build   - Build de l'image hardenee"
@@ -14,6 +19,9 @@ help:
 	@echo "  make clean   - Supprime volumes + image"
 
 build:
+	@test -n "$(VARNISH_VERSION)" -a "$(VARNISH_VERSION)" != "null" \
+	  || { echo "versions.json: .varnish illisible"; exit 1; }
+	@echo "Build Varnish $(VARNISH_VERSION) (versions.json)"
 	DOCKER_BUILDKIT=1 $(DC) build --pull
 
 up:

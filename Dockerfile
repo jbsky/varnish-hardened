@@ -2,7 +2,13 @@
 #  Varnish Hardened — Tier Platine (FROM scratch)
 #  4-stage: builder → gobuilder → prep → scratch
 # =====================================================================
-ARG VARNISH_VERSION=7.7.3
+# No default on purpose. versions.json is the single source of truth for the
+# Varnish version; a default here drifts away from it silently -- it sat at
+# 7.7.3 while versions.json and the published images had moved to 8.0.0, so
+# `make build` produced a 7.7.3 image while CI shipped 8.0.0 under the same
+# name. CI and the Makefile both pass it explicitly, and a bare `docker build`
+# now fails with a message instead of building the wrong version.
+ARG VARNISH_VERSION
 # ALPINE_VERSION kept for check-versions.sh/versions.json reference only --
 # the FROM lines below pin tag+digest together as a literal so a version
 # bump requires deliberately re-resolving the digest, not a silent drift
@@ -23,6 +29,10 @@ ARG TCC_COMMIT
 ENV CFLAGS="-O2 -fstack-protector-strong -fstack-clash-protection -fPIE -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security" \
     CXXFLAGS="-O2 -fstack-protector-strong -fstack-clash-protection -fPIE -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security" \
     LDFLAGS="-Wl,-z,relro,-z,now,-z,noexecstack -pie"
+
+# Fail before the (long) TCC build rather than after it
+RUN test -n "${VARNISH_VERSION}" \
+    || { echo "VARNISH_VERSION build-arg is required: jq -r .varnish versions.json" >&2; exit 1; }
 
 # Proxy-aware: HTTP repos for SSL Bump compatibility
 RUN sed -i 's|https://|http://|g' /etc/apk/repositories

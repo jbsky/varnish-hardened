@@ -16,6 +16,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Read from versions.json by `make build` -- never hardcoded here.
+        VARNISH_VERSION: ${VARNISH_VERSION:?run `make build`, which reads versions.json}
     image: localhost/varnish-hardened:latest
     <<: *common-security
     ports:

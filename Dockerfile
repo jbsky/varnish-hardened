@@ -177,16 +177,23 @@ RUN printf 'vcl 4.1;\nbackend default none;\n' > /etc/varnish/default.vcl
 # lddtree -l prints each binary, its transitive dependencies, symlinks together
 # with their targets, and the loader for the architecture being built, so
 # nothing hardcodes ld-musl-x86_64.so.1. VMODs are dlopen'd, so they are listed
-# as roots rather than discovered. This must run while /bin/sh is still the
-# build shell, i.e. before the busybox step below.
+# as roots rather than discovered -- and they live in /usr/lib/varnish/vmods/,
+# not directly under /usr/lib/varnish/, so they are enumerated with find rather
+# than a glob that silently matched nothing. The `test -n` refuses to build if
+# that find ever comes back empty. This must run while /bin/sh is still the
+# build shell, i.e. before the busybox step below. The .la libtool archives are
+# dropped: they are link-time metadata, never read at runtime.
 RUN --mount=type=cache,target=/var/cache/apk \
     apk add --no-cache lddtree \
  && mkdir -p /rootfs \
- && lddtree -l \
-      /usr/sbin/varnishd /usr/bin/varnishadm /usr/bin/varnishlog \
-      /usr/bin/varnishstat /usr/bin/varnishncsa /usr/bin/varnishhist \
-      /usr/bin/varnishtop /usr/bin/tcc /bin/busybox \
-      /usr/lib/libvarnishapi.so /usr/lib/varnish/*.so > /tmp/closure.list \
+ && find /usr/lib/varnish -name '*.la' -delete \
+ && test -n "$(find /usr/lib/varnish -name '*.so' -print -quit)" \
+ && { lddtree -l \
+        /usr/sbin/varnishd /usr/bin/varnishadm /usr/bin/varnishlog \
+        /usr/bin/varnishstat /usr/bin/varnishncsa /usr/bin/varnishhist \
+        /usr/bin/varnishtop /usr/bin/tcc /bin/busybox \
+        /usr/lib/libvarnishapi.so; \
+      find /usr/lib/varnish -name '*.so' -exec lddtree -l {} +; } > /tmp/closure.list \
  && sort -u /tmp/closure.list -o /tmp/closure.list \
  && tar -cf /tmp/closure.tar -T /tmp/closure.list \
  && tar -xf /tmp/closure.tar -C /rootfs \

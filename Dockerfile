@@ -199,10 +199,19 @@ RUN --mount=type=cache,target=/var/cache/apk \
  && tar -xf /tmp/closure.tar -C /rootfs \
  && rm -f /tmp/closure.list /tmp/closure.tar
 
-# libtcc1.a is not an ELF dependency -- tcc needs the file on disk to link the
-# shared objects it compiles from VCL, so no closure will ever list it.
+# Link-time inputs, invisible to any dependency closure: tcc reads them when it
+# links the shared object it compiles from VCL, it does not dlopen them.
+#   libtcc1.a  tcc's own runtime helpers
+#   crti.o / crtn.o  prologue and epilogue for a -shared link
+#   libc.so    symlink to the musl loader, without it tcc reports "library 'c'
+#              not found"
+# Everything else musl-dev installs is left behind on purpose -- notably
+# libc.a (9.4 MB of static libc that a -shared link never touches), crt1.o,
+# Scrt1.o, rcrt1.o and the empty stub archives. Established by removing them
+# one at a time and re-running a tcc -fpic -shared compile until it broke.
 RUN mkdir -p /rootfs/usr/lib \
- && cp -a /usr/lib/tcc /rootfs/usr/lib/
+ && cp -a /usr/lib/tcc /rootfs/usr/lib/ \
+ && cp -a /usr/lib/crti.o /usr/lib/crtn.o /usr/lib/libc.so /rootfs/usr/lib/
 
 # Busybox symlinks for varnishd system() calls (MUST be last — breaks /bin/sh).
 # This is the container's *runtime* /bin/sh (what varnishd's system() calls

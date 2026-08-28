@@ -28,6 +28,11 @@ ARG ALPINE_VERSION=3.24
 # it deliberately (`git ls-remote https://repo.or.cz/tinycc.git mob`).
 ARG TCC_COMMIT=2ba12e83b3599ca8f5d50c179fe5138fe956f0c9
 
+# jemalloc est compile depuis les sources, pas installe via apk : voir la note
+# devant sa compilation dans le stage builder.
+ARG JEMALLOC_VERSION=5.3.1
+ARG JEMALLOC_SHA256=3826bc80232f22ed5c4662f3034f799ca316e819103bdc7bb99018a421706f92
+
 # --- Stage 1: Build Varnish + TCC from source --------------------------
 FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS builder
 
@@ -56,8 +61,52 @@ RUN --mount=type=cache,target=/var/cache/apk \
     apk add --no-cache \
         build-base autoconf automake libtool pkgconfig \
         python3 py3-docutils py3-sphinx \
-        pcre2-dev libedit-dev ncurses-dev jemalloc-dev linux-headers \
-        libunwind-dev
+        pcre2-dev libedit-dev ncurses-dev linux-headers \
+        libunwind-dev curl
+
+# --- jemalloc, compile depuis les sources ---
+#
+# Le paquet Alpine est construit avec le support C++ (surcharges de new/delete),
+# ce qui fait de libjemalloc le SEUL consommateur de libstdc++ de cette image :
+# 2,8 Mo de C++ embarques pour un allocateur ecrit en C. `--disable-cxx` les
+# supprime, et libgcc_s part avec puisque plus rien ne l'appelle.
+#
+# jemalloc s'installe NON STRIPPE (il compile en -g3 par defaut) : 6,1 Mo au
+# lieu de 818 Ko. Une bibliotheque compilee depuis les sources n'herite
+# d'aucun strip, contrairement a un paquet Alpine -- le faire explicitement.
+#
+# jemalloc ne publie ni signature ni hash amont : le sha256 est epingle ici,
+# comme varnish_sha256 juste au-dessus. Le canal a ete valide en comparant le
+# sha512 de la 5.3.0 telechargee sur GitHub a celui qu'Alpine verifie de son
+# cote -- identique octet pour octet.
+#
+# CFLAGS/LDFLAGS sont redefinis pour cette compilation seule : le stage porte
+# `-fPIE` et `-pie` pour les executables de Varnish, mais jemalloc produit une
+# bibliotheque PARTAGEE. `-pie` sur un lien `-shared` fait tirer Scrt1.o au
+# linker, qui reclame alors un `main` inexistant. -fPIC suffit et est correct
+# des deux cotes.
+ARG JEMALLOC_VERSION
+ARG JEMALLOC_SHA256
+WORKDIR /tmp/jemalloc
+RUN export CFLAGS="-O2 -fstack-protector-strong -fstack-clash-protection -fPIC -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security" \
+ && export LDFLAGS="-Wl,-z,relro,-z,now,-z,noexecstack" \
+ && curl -fsSL "https://github.com/jemalloc/jemalloc/releases/download/${JEMALLOC_VERSION}/jemalloc-${JEMALLOC_VERSION}.tar.bz2" \
+      -o /tmp/jemalloc.tar.bz2 \
+ && printf '%s  /tmp/jemalloc.tar.bz2\n' "${JEMALLOC_SHA256}" > /tmp/jemalloc.sha256 \
+ && sha256sum -c /tmp/jemalloc.sha256 \
+ && tar -xjf /tmp/jemalloc.tar.bz2 -C /tmp/jemalloc --strip-components=1 \
+ && ./configure --prefix=/usr --disable-cxx --disable-static --disable-doc \
+ && make -j"$(nproc)" \
+ && make install \
+ && test ! -e /usr/lib/libjemalloc.a \
+ && strip --strip-unneeded /usr/lib/libjemalloc.so.2 \
+ && rm -rf /tmp/jemalloc /tmp/jemalloc.tar.bz2 /tmp/jemalloc.sha256
+
+# Retour a la racine : le telechargement de Varnish plus bas s'extrait dans le
+# repertoire courant, et le WORKDIR /varnish-${VARNISH_VERSION} qui suit compte
+# dessus. Sans cette ligne, le tarball atterrit dans /tmp/jemalloc et configure
+# devient introuvable.
+WORKDIR /
 
 # Build TCC from source (pinned mob commit — compiler + empty libtcc1.a stub)
 # VCL shared libs don't need libtcc1 symbols, but TCC requires the file to exist.
@@ -89,7 +138,7 @@ RUN unset CFLAGS CXXFLAGS LDFLAGS \
 # Download and extract Varnish source
 RUN --mount=type=secret,id=ca-certs,required=false \
     if [ -f /run/secrets/ca-certs ]; then cat /run/secrets/ca-certs >> /etc/ssl/certs/ca-certificates.crt; fi \
-    && wget -q "https://varnish-cache.org/_downloads/varnish-${VARNISH_VERSION}.tgz" \
+    && curl -fsSL "https://varnish-cache.org/_downloads/varnish-${VARNISH_VERSION}.tgz" -O \
     && printf '%s  varnish-%s.tgz\n' "${VARNISH_SHA256}" "${VARNISH_VERSION}" > varnish.sha256 \
     && sha256sum -c varnish.sha256 \
     && rm varnish.sha256 \
@@ -132,8 +181,8 @@ RUN sed -i 's|https://|http://|g' /etc/apk/repositories
 # Runtime libraries only (no compilers, no package manager in final)
 RUN --mount=type=cache,target=/var/cache/apk \
     apk add --no-cache \
-        pcre2 libedit ncurses-libs jemalloc libunwind \
-        libstdc++ libgcc \
+        pcre2 libedit ncurses-libs libunwind \
+        libgcc \
         musl-dev \
         tini-static ca-certificates tzdata
 
@@ -141,6 +190,10 @@ RUN --mount=type=cache,target=/var/cache/apk \
 RUN adduser -D -u 6081 -H -s /sbin/nologin -G nogroup varnish
 
 # Copy Varnish compiled artifacts
+# jemalloc est compile dans le builder (voir la note la-bas), pas installe par
+# apk ici : sa bibliotheque partagee doit donc etre reprise explicitement.
+COPY --from=builder /usr/lib/libjemalloc.so* /usr/lib/
+
 COPY --from=builder /out/usr/sbin/varnishd /usr/sbin/
 COPY --from=builder /out/usr/bin/varnishadm /usr/bin/
 COPY --from=builder /out/usr/bin/varnishlog /usr/bin/
@@ -183,6 +236,12 @@ RUN printf 'vcl 4.1;\nbackend default none;\n' > /etc/varnish/default.vcl
 # that find ever comes back empty. This must run while /bin/sh is still the
 # build shell, i.e. before the busybox step below. The .la libtool archives are
 # dropped: they are link-time metadata, never read at runtime.
+#
+# The "Not found" guard matters more here qu'ailleurs : deux paquets runtime
+# viennent de disparaitre (jemalloc, libstdc++), et TCC compile le VCL au
+# demarrage du conteneur -- une bibliotheque manquante ne se verrait donc pas
+# sur `varnishd -V` mais a la premiere requete. lddtree signale une dependance
+# introuvable sur stderr et sort quand meme en 0.
 RUN --mount=type=cache,target=/var/cache/apk \
     apk add --no-cache lddtree \
  && mkdir -p /rootfs \
@@ -193,11 +252,17 @@ RUN --mount=type=cache,target=/var/cache/apk \
         /usr/bin/varnishstat /usr/bin/varnishncsa /usr/bin/varnishhist \
         /usr/bin/varnishtop /usr/bin/tcc /bin/busybox \
         /usr/lib/libvarnishapi.so; \
-      find /usr/lib/varnish -name '*.so' -exec lddtree -l {} +; } > /tmp/closure.list \
+      find /usr/lib/varnish -name '*.so' -exec lddtree -l {} +; } \
+      > /tmp/closure.list 2> /tmp/closure.err \
+ && if grep -q 'Not found' /tmp/closure.list /tmp/closure.err; then \
+      echo "closure incomplete -- a dependency is missing from this stage:" >&2; \
+      grep 'Not found' /tmp/closure.list /tmp/closure.err >&2; \
+      exit 1; \
+    fi \
  && sort -u /tmp/closure.list -o /tmp/closure.list \
  && tar -cf /tmp/closure.tar -T /tmp/closure.list \
  && tar -xf /tmp/closure.tar -C /rootfs \
- && rm -f /tmp/closure.list /tmp/closure.tar
+ && rm -f /tmp/closure.list /tmp/closure.err /tmp/closure.tar
 
 # Link-time inputs, invisible to any dependency closure: tcc reads them when it
 # links the shared object it compiles from VCL, it does not dlopen them.

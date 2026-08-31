@@ -242,6 +242,19 @@ RUN printf 'vcl 4.1;\nbackend default none;\n' > /etc/varnish/default.vcl
 # demarrage du conteneur -- une bibliotheque manquante ne se verrait donc pas
 # sur `varnishd -V` mais a la premiere requete. lddtree signale une dependance
 # introuvable sur stderr et sort quand meme en 0.
+#
+# lddtree prints each binary it is handed, so this list holds the roots as well
+# as their dependencies -- and varnishd, the six varnish* tools, tcc,
+# libvarnishapi and the VMODs are all copied again, on their own COPY lines, in
+# the final stage. Layers are not deduplicated, so 2,94 Mo of this image was
+# going out twice. Those roots keep their individual COPY and are filtered out
+# of the tar input here.
+#
+# /bin/busybox is deliberately NOT filtered: the final stage copies
+# /bin/busybox-varnish, a different path, so this archive is its only source.
+#
+# The completeness check runs on the UNFILTERED list, above: a filter must
+# never be able to hide a missing dependency.
 RUN --mount=type=cache,target=/var/cache/apk \
     apk add --no-cache lddtree \
  && mkdir -p /rootfs \
@@ -260,9 +273,11 @@ RUN --mount=type=cache,target=/var/cache/apk \
       exit 1; \
     fi \
  && sort -u /tmp/closure.list -o /tmp/closure.list \
- && tar -cf /tmp/closure.tar -T /tmp/closure.list \
+ && grep -v -E '^/usr/sbin/varnishd$|^/usr/bin/varnish(adm|log|stat|ncsa|hist|top)$|^/usr/bin/tcc$|^/usr/lib/libvarnishapi\.so|^/usr/lib/varnish/' \
+      /tmp/closure.list > /tmp/closure.deps \
+ && tar -cf /tmp/closure.tar -T /tmp/closure.deps \
  && tar -xf /tmp/closure.tar -C /rootfs \
- && rm -f /tmp/closure.list /tmp/closure.err /tmp/closure.tar
+ && rm -f /tmp/closure.list /tmp/closure.deps /tmp/closure.err /tmp/closure.tar
 
 # Link-time inputs, invisible to any dependency closure: tcc reads them when it
 # links the shared object it compiles from VCL, it does not dlopen them.

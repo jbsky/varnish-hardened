@@ -4,7 +4,7 @@
 [![Docker Hub](https://img.shields.io/docker/v/jbsky/varnish-hardened?sort=semver&label=Docker%20Hub)](https://hub.docker.com/r/jbsky/varnish-hardened)
 [![Hardening](https://img.shields.io/badge/hardening-platine-blueviolet)](https://github.com/jbsky/varnish-hardened#security--verification)
 
-Image Docker Varnish Cache 8.0.0 hardenee (FROM scratch, Go init, tini PID 1), optimisee pour deploiement K3s avec shard director horizontal scaling.
+Image Docker Varnish Cache <!--v:varnish-hardened-->8.0.0<!--/v--> hardenee (FROM scratch, Go init, tini PID 1), optimisee pour deploiement K3s avec shard director horizontal scaling.
 
 ## Features
 
@@ -32,6 +32,10 @@ inaccessible. **En production, epinglez le tag qui porte le compteur.**
 |-------|---------------|-------------------------|
 | `jbsky/varnish-hardened` | `8.0.0` | `8.0.0.23` |
 <!-- END:tags -->
+
+Ce tableau, les versions citees dans le texte et les tags qui apparaissent
+dans les exemples sont tous rendus par `scripts/update-readme-tags.sh` apres
+chaque publication -- ne rien editer a la main.
 
 Le compteur compte les commits qui touchent les inputs declares (`Dockerfile`, `init.go`, `go.mod`, `conf/`, `scripts/`, `versions.json`)
 depuis le dernier changement de version amont, et repart a `0` a chaque nouvelle
@@ -123,7 +127,7 @@ varnish-hardened/
 ## Build multi-stage
 
 ```
-Stage 1: builder      → Compile Varnish 8.0.0 + TCC from source (hardening flags)
+Stage 1: builder      → Compile Varnish + TCC from source (hardening flags)
 Stage 2: gobuilder    → CGO_ENABLED=0 Go static init binary
 Stage 3: prep         → Runtime libs + tini + user 6081 + setcap (aucun)
 Stage 4: FROM scratch → Assemblage final (~18 MB)
@@ -146,7 +150,7 @@ Le Go init effectue un HTTP GET sur `/__health` (port 8080) :
 
 ```bash
 # Verifier la signature cosign (OIDC keyless)
-cosign verify ghcr.io/jbsky/varnish-hardened:8.0.0.15 \
+cosign verify ghcr.io/jbsky/varnish-hardened:8.0.0.23 \
   --certificate-identity-regexp '^https://github.com/jbsky/varnish-hardened/' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```

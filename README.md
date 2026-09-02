@@ -30,7 +30,7 @@ inaccessible. **En production, epinglez le tag qui porte le compteur.**
 <!-- BEGIN:tags (genere par la CI -- ne pas editer a la main) -->
 | Image | Version amont | Tag immuable a epingler |
 |-------|---------------|-------------------------|
-| `jbsky/varnish-hardened` | `8.0.0` | `8.0.0.23` |
+| `jbsky/varnish-hardened` | `8.0.0` | `8.0.0.24` |
 <!-- END:tags -->
 
 Ce tableau, les versions citees dans le texte et les tags qui apparaissent
@@ -150,7 +150,7 @@ Le Go init effectue un HTTP GET sur `/__health` (port 8080) :
 
 ```bash
 # Verifier la signature cosign (OIDC keyless)
-cosign verify ghcr.io/jbsky/varnish-hardened:8.0.0.23 \
+cosign verify ghcr.io/jbsky/varnish-hardened:8.0.0.24 \
   --certificate-identity-regexp '^https://github.com/jbsky/varnish-hardened/' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```

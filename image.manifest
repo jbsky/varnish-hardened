@@ -30,8 +30,8 @@ l usr/lib/liblzma.so.5 -> liblzma.so.5.8.3
 f 0755 0:0 elf usr/lib/liblzma.so.5.8.3
 l usr/lib/libncursesw.so.6 -> libncursesw.so.6.6
 f 0755 0:0 elf usr/lib/libncursesw.so.6.6
-l usr/lib/libpcre2-8.so.0 -> libpcre2-8.so.0.16.0
-f 0755 0:0 elf usr/lib/libpcre2-8.so.0.16.0
+l usr/lib/libpcre2-8.so.0 -> libpcre2-8.so.0.15.0
+f 0755 0:0 elf usr/lib/libpcre2-8.so.0.15.0
 l usr/lib/libunwind.so.8 -> libunwind.so.8.2.0
 f 0755 0:0 elf usr/lib/libunwind.so.8.2.0
 l usr/lib/libvarnishapi.so -> libvarnishapi.so.3

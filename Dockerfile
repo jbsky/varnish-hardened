@@ -210,37 +210,28 @@ COPY --from=builder /out/usr/bin/varnishtop /usr/bin/
 COPY --from=builder /out/usr/lib/varnish/ /usr/lib/varnish/
 COPY --from=builder /out/usr/lib/libvarnishapi* /usr/lib/
 
-# `COPY` d'un GLOB deference les liens, exactement comme `COPY` d'un fichier
-# nomme : les trois noms de libvarnishapi arrivent ici en FICHIERS PLEINS,
-# 3 x 248 088 o pour un seul contenu. C'est ici que le doublon nait -- pas au
-# stage final, ou il etait seulement recopie. On refait la chaine de sonames,
-# que la cloture lddtree emportera ensuite telle quelle. Le nom reel n'est pas
-# ecrit en dur : il suit la version de Varnish.
+# `COPY` d'un GLOB DEFERENCE les liens symboliques, exactement comme `COPY`
+# d'un fichier nomme : les trois noms de libvarnishapi arrivent ici en trois
+# FICHIERS PLEINS de 248 088 o au lieu d'un fichier et deux liens de soname
+# (mesure le 2026-09-08). C'est ICI que le doublon nait -- le stage final n'y
+# peut plus rien, il ne faisait que le recopier. On refait donc la chaine ici,
+# et la cloture lddtree l'emportera telle quelle :
+#   libvarnishapi.so -> libvarnishapi.so.3 -> libvarnishapi.so.3.1.0
+# Le numero n'est pas ecrit en dur, il suit le bump de Varnish. La boucle sur
+# le glob remplace `ls ... | head` : ni pipe (DL4006) ni `ls` (SC2012), et le
+# couple `test` refuse de continuer si le glob ne matche pas exactement un
+# fichier -- un glob sans correspondance s'auto-itere sur son propre motif,
+# ce qui fabriquerait un lien vers un nom qui n'existe pas.
 RUN cd /usr/lib \
- && real="$(ls -1 libvarnishapi.so.*.*.* 2>/dev/null | head -1)" \
- && test -n "${real}" \
+ && n=0 \
+ && for f in libvarnishapi.so.*.*.*; do real="$f"; n=$((n+1)); done \
+ && test "$n" = 1 \
+ && test -f "${real}" \
  && soname="${real%.*.*}" \
  && rm -f libvarnishapi.so "${soname}" \
  && ln -s "${real}" "${soname}" \
  && ln -s "${soname}" libvarnishapi.so
 COPY --from=builder /out/usr/include/varnish/ /usr/include/varnish/
-
-# `COPY` d'un motif nomme DEFERENCE les liens symboliques : les trois noms de
-# libvarnishapi arrivent ici en trois FICHIERS PLEINS de 248 088 o au lieu d'un
-# fichier et deux liens de soname (mesure le 2026-09-08). Le stage final n'y
-# peut plus rien -- le mal est fait des ce COPY. On refait donc la chaine ici,
-# et la cloture lddtree la recopiera telle quelle.
-#   libvarnishapi.so -> libvarnishapi.so.3 -> libvarnishapi.so.3.1.0
-# Le numero n'est pas ecrit en dur : il suit le bump de Varnish. Le `test` sur
-# le nombre de resultats refuse de continuer si la forme du nom change, plutot
-# que de fabriquer un lien vers n'importe quoi.
-RUN cd /usr/lib \
- && real="$(ls libvarnishapi.so.*.*.*)" \
- && test "$(echo "$real" | wc -l)" = 1 \
- && son="${real%.*.*}" \
- && rm -f libvarnishapi.so "$son" \
- && ln -s "$real" "$son" \
- && ln -s "$son" libvarnishapi.so
 
 # TCC binary as cc/gcc (Varnish VCC_CC defaults to "exec gcc")
 COPY --from=builder /tcc-out/usr/bin/tcc /usr/bin/tcc

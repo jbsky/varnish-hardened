@@ -110,10 +110,15 @@ WORKDIR /
 
 # Build TCC from source (pinned mob commit — compiler + empty libtcc1.a stub)
 # VCL shared libs don't need libtcc1 symbols, but TCC requires the file to exist.
-# `fetch --depth=1 <sha>` keeps it a shallow fetch while pinning exactly: git
-# verifies the object hashes, so the pin is the integrity check. repo.or.cz is
-# a single point of failure (it was down for hours on 2026-08-18 and took
-# unrelated PR builds with it), hence the bounded retries.
+# On recupere la BRANCHE puis on checkout le SHA epingle -- pas
+# `fetch --depth=1 <sha>`, qui echouait avec "Server does not allow request for
+# unadvertised object" des que le commit epingle cessait d'etre le tip de mob
+# (constate le 2026-09-08 : mob etait passe a 0fb54300). La garantie est
+# identique, git verifiant les hachages a l'extraction ; seul le transport
+# change, et `cat-file -e` refuse de continuer si le SHA n'est pas dans ce que
+# le fetch a ramene. repo.or.cz est un point unique de defaillance (indisponible
+# des heures le 2026-08-18, entrainant des builds de PR sans rapport), d'ou les
+# tentatives bornees.
 # hadolint ignore=DL3003
 RUN unset CFLAGS CXXFLAGS LDFLAGS \
     && apk add --no-cache git \
@@ -121,12 +126,13 @@ RUN unset CFLAGS CXXFLAGS LDFLAGS \
     && git -C /tcc-src init -q \
     && git -C /tcc-src remote add origin https://repo.or.cz/tinycc.git \
     && for attempt in 1 2 3; do \
-         timeout 120 git -C /tcc-src fetch --depth=1 origin "${TCC_COMMIT}" && break; \
+         timeout 180 git -C /tcc-src fetch --depth=200 origin mob && break; \
          echo "tinycc fetch attempt ${attempt} failed"; \
          [ "$attempt" = 3 ] && exit 1; \
          sleep 15; \
        done \
-    && git -C /tcc-src checkout -q FETCH_HEAD \
+    && git -C /tcc-src cat-file -e "${TCC_COMMIT}^{commit}" \
+    && git -C /tcc-src checkout -q "${TCC_COMMIT}" \
     && cd /tcc-src \
     && ./configure --prefix=/usr \
     && make tcc \
@@ -203,7 +209,38 @@ COPY --from=builder /out/usr/bin/varnishhist /usr/bin/
 COPY --from=builder /out/usr/bin/varnishtop /usr/bin/
 COPY --from=builder /out/usr/lib/varnish/ /usr/lib/varnish/
 COPY --from=builder /out/usr/lib/libvarnishapi* /usr/lib/
+
+# `COPY` d'un GLOB deference les liens, exactement comme `COPY` d'un fichier
+# nomme : les trois noms de libvarnishapi arrivent ici en FICHIERS PLEINS,
+# 3 x 248 088 o pour un seul contenu. C'est ici que le doublon nait -- pas au
+# stage final, ou il etait seulement recopie. On refait la chaine de sonames,
+# que la cloture lddtree emportera ensuite telle quelle. Le nom reel n'est pas
+# ecrit en dur : il suit la version de Varnish.
+RUN cd /usr/lib \
+ && real="$(ls -1 libvarnishapi.so.*.*.* 2>/dev/null | head -1)" \
+ && test -n "${real}" \
+ && soname="${real%.*.*}" \
+ && rm -f libvarnishapi.so "${soname}" \
+ && ln -s "${real}" "${soname}" \
+ && ln -s "${soname}" libvarnishapi.so
 COPY --from=builder /out/usr/include/varnish/ /usr/include/varnish/
+
+# `COPY` d'un motif nomme DEFERENCE les liens symboliques : les trois noms de
+# libvarnishapi arrivent ici en trois FICHIERS PLEINS de 248 088 o au lieu d'un
+# fichier et deux liens de soname (mesure le 2026-09-08). Le stage final n'y
+# peut plus rien -- le mal est fait des ce COPY. On refait donc la chaine ici,
+# et la cloture lddtree la recopiera telle quelle.
+#   libvarnishapi.so -> libvarnishapi.so.3 -> libvarnishapi.so.3.1.0
+# Le numero n'est pas ecrit en dur : il suit le bump de Varnish. Le `test` sur
+# le nombre de resultats refuse de continuer si la forme du nom change, plutot
+# que de fabriquer un lien vers n'importe quoi.
+RUN cd /usr/lib \
+ && real="$(ls libvarnishapi.so.*.*.*)" \
+ && test "$(echo "$real" | wc -l)" = 1 \
+ && son="${real%.*.*}" \
+ && rm -f libvarnishapi.so "$son" \
+ && ln -s "$real" "$son" \
+ && ln -s "$son" libvarnishapi.so
 
 # TCC binary as cc/gcc (Varnish VCC_CC defaults to "exec gcc")
 COPY --from=builder /tcc-out/usr/bin/tcc /usr/bin/tcc
@@ -250,8 +287,13 @@ RUN printf 'vcl 4.1;\nbackend default none;\n' > /etc/varnish/default.vcl
 # going out twice. Those roots keep their individual COPY and are filtered out
 # of the tar input here.
 #
-# /bin/busybox is deliberately NOT filtered: the final stage copies
-# /bin/busybox-varnish, a different path, so this archive is its only source.
+# /bin/busybox, /usr/bin/tcc et libvarnishapi ne sont PAS filtres : cette
+# archive est leur seule source, et c'est ce qui preserve leurs liens
+# symboliques. Un `COPY --from=prep /bin/sh /bin/sh` deference le lien et
+# embarque une COPIE ENTIERE : busybox partait en 4 exemplaires identiques
+# (3,2 Mo pour 804 Ko utiles), tcc en 3 et libvarnishapi en 3. Le stage prep
+# creait pourtant les bons liens -- le stage final les defaisait en silence.
+# Regle : un lien symbolique ne survit qu'a une copie de REPERTOIRE.
 #
 # The completeness check runs on the UNFILTERED list, above: a filter must
 # never be able to hide a missing dependency.
@@ -273,7 +315,7 @@ RUN --mount=type=cache,target=/var/cache/apk \
       exit 1; \
     fi \
  && sort -u /tmp/closure.list -o /tmp/closure.list \
- && grep -v -E '^/usr/sbin/varnishd$|^/usr/bin/varnish(adm|log|stat|ncsa|hist|top)$|^/usr/bin/tcc$|^/usr/lib/libvarnishapi\.so|^/usr/lib/varnish/' \
+ && grep -v -E '^/usr/sbin/varnishd$|^/usr/bin/varnish(adm|log|stat|ncsa|hist|top)$|^/usr/lib/varnish/' \
       /tmp/closure.list > /tmp/closure.deps \
  && tar -cf /tmp/closure.tar -T /tmp/closure.deps \
  && tar -xf /tmp/closure.tar -C /rootfs \
@@ -293,14 +335,15 @@ RUN mkdir -p /rootfs/usr/lib \
  && cp -a /usr/lib/tcc /rootfs/usr/lib/ \
  && cp -a /usr/lib/crti.o /usr/lib/crtn.o /usr/lib/libc.so /rootfs/usr/lib/
 
-# Busybox symlinks for varnishd system() calls (MUST be last — breaks /bin/sh).
-# This is the container's *runtime* /bin/sh (what varnishd's system() calls
-# use once shipped), not the build-time shell -- SHELL wouldn't apply here.
-# hadolint ignore=DL4005
-RUN cp /bin/busybox /bin/busybox-varnish \
-    && rm -f /bin/sh /bin/rm \
-    && ln -s /bin/busybox-varnish /bin/sh \
-    && ln -s /bin/busybox-varnish /bin/rm
+# Liens de l'image finale, fabriques DANS /rootfs : le /bin du stage de build
+# n'est plus touche, donc plus de "MUST be last" ni de shell casse en cours de
+# route. /bin/sh et /bin/rm servent aux appels system() de varnishd ; cc et gcc
+# sont des alias defensifs -- varnishd est compile avec
+# VCC_CC="exec tcc -fpic -shared -o %o %s", il invoque donc tcc par son nom.
+RUN ln -sf busybox /rootfs/bin/sh \
+    && ln -sf busybox /rootfs/bin/rm \
+    && ln -sf tcc /rootfs/usr/bin/cc \
+    && ln -sf tcc /rootfs/usr/bin/gcc
 
 # --- Stage 4: FROM scratch — final hardened image ----------------------
 FROM scratch
@@ -331,15 +374,8 @@ COPY --link --from=prep /usr/include/ /usr/include/
 # tini-static as PID 1
 COPY --link --from=prep /sbin/tini-static /sbin/tini
 
-# Minimal shell (required by varnishd system() calls for cleanup)
-COPY --link --from=prep /bin/busybox-varnish /bin/busybox-varnish
-COPY --link --from=prep /bin/sh /bin/sh
-COPY --link --from=prep /bin/rm /bin/rm
-
-# TCC compiler (already in /usr/lib/ via bulk copy, just need binaries)
-COPY --link --from=prep /usr/bin/tcc /usr/bin/tcc
-COPY --link --from=prep /usr/bin/cc /usr/bin/cc
-COPY --link --from=prep /usr/bin/gcc /usr/bin/gcc
+# Le shell minimal (system() de varnishd), TCC et libvarnishapi arrivent
+# desormais par /rootfs/ ci-dessus, avec leurs liens intacts.
 
 # Varnish binaries + shared libs + vmods
 COPY --link --from=prep /usr/sbin/varnishd /usr/sbin/
@@ -349,7 +385,6 @@ COPY --link --from=prep /usr/bin/varnishstat /usr/bin/
 COPY --link --from=prep /usr/bin/varnishncsa /usr/bin/
 COPY --link --from=prep /usr/bin/varnishhist /usr/bin/
 COPY --link --from=prep /usr/bin/varnishtop /usr/bin/
-COPY --link --from=prep /usr/lib/libvarnishapi.so* /usr/lib/
 COPY --link --from=prep /usr/lib/varnish/ /usr/lib/varnish/
 
 # Go init (entrypoint + healthcheck)

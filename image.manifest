@@ -1,19 +1,18 @@
 # image-manifest v1
-# image : jbsky/varnish-hardened:latest
+# image : varnish-hardened
 # genere par scripts/image-manifest.py -- ne pas editer a la main
 
 f 0755 0:0 elf bin/busybox
-f 0755 0:0 elf bin/busybox-varnish
-f 0755 0:0 elf bin/rm
-f 0755 0:0 elf bin/sh
+l bin/rm -> busybox
+l bin/sh -> busybox
 f 0644 0:0 - etc/group
 f 0644 0:0 - etc/passwd
 f 0644 0:0 - etc/varnish/default.vcl
 f 0755 0:0 elf lib/ld-musl-x86_64.so.1
 l lib/libc.musl-x86_64.so.1 -> ld-musl-x86_64.so.1
 f 0755 0:0 elf sbin/tini
-f 0755 0:0 elf usr/bin/cc
-f 0755 0:0 elf usr/bin/gcc
+l usr/bin/cc -> tcc
+l usr/bin/gcc -> tcc
 f 0755 0:0 elf usr/bin/tcc
 f 0755 0:0 elf usr/bin/varnishadm
 f 0755 0:0 elf usr/bin/varnishhist
@@ -31,12 +30,12 @@ l usr/lib/liblzma.so.5 -> liblzma.so.5.8.3
 f 0755 0:0 elf usr/lib/liblzma.so.5.8.3
 l usr/lib/libncursesw.so.6 -> libncursesw.so.6.6
 f 0755 0:0 elf usr/lib/libncursesw.so.6.6
-l usr/lib/libpcre2-8.so.0 -> libpcre2-8.so.0.15.0
-f 0755 0:0 elf usr/lib/libpcre2-8.so.0.15.0
+l usr/lib/libpcre2-8.so.0 -> libpcre2-8.so.0.16.0
+f 0755 0:0 elf usr/lib/libpcre2-8.so.0.16.0
 l usr/lib/libunwind.so.8 -> libunwind.so.8.2.0
 f 0755 0:0 elf usr/lib/libunwind.so.8.2.0
-f 0755 0:0 elf usr/lib/libvarnishapi.so
-f 0755 0:0 elf usr/lib/libvarnishapi.so.3
+l usr/lib/libvarnishapi.so -> libvarnishapi.so.3
+l usr/lib/libvarnishapi.so.3 -> libvarnishapi.so.3.1.0
 f 0755 0:0 elf usr/lib/libvarnishapi.so.3.1.0
 f 0755 0:0 elf usr/lib/varnish/vmods/libvmod_blob.so
 f 0755 0:0 elf usr/lib/varnish/vmods/libvmod_cookie.so
@@ -55,7 +54,3 @@ count 338 usr/include/
 count 1 usr/lib/tcc/
 count 624 usr/share/
 count 2 var/
-
-dup 4 804616 bin/busybox bin/busybox-varnish bin/rm bin/sh
-dup 3 354192 usr/bin/cc usr/bin/gcc usr/bin/tcc
-dup 3 248088 usr/lib/libvarnishapi.so usr/lib/libvarnishapi.so.3 usr/lib/libvarnishapi.so.3.1.0

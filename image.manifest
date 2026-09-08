@@ -1,0 +1,56 @@
+# image-manifest v1
+# image : varnish-hardened
+# genere par scripts/image-manifest.py -- ne pas editer a la main
+
+f 0755 0:0 elf bin/busybox
+l bin/rm -> busybox
+l bin/sh -> busybox
+f 0644 0:0 - etc/group
+f 0644 0:0 - etc/passwd
+f 0644 0:0 - etc/varnish/default.vcl
+f 0755 0:0 elf lib/ld-musl-x86_64.so.1
+l lib/libc.musl-x86_64.so.1 -> ld-musl-x86_64.so.1
+f 0755 0:0 elf sbin/tini
+l usr/bin/cc -> tcc
+l usr/bin/gcc -> tcc
+f 0755 0:0 elf usr/bin/tcc
+f 0755 0:0 elf usr/bin/varnishadm
+f 0755 0:0 elf usr/bin/varnishhist
+f 0755 0:0 elf usr/bin/varnishlog
+f 0755 0:0 elf usr/bin/varnishncsa
+f 0755 0:0 elf usr/bin/varnishstat
+f 0755 0:0 elf usr/bin/varnishtop
+f 0644 0:0 elf usr/lib/crti.o
+f 0644 0:0 elf usr/lib/crtn.o
+l usr/lib/libc.so -> ../../lib/ld-musl-x86_64.so.1
+l usr/lib/libedit.so.0 -> libedit.so.0.0.77
+f 0755 0:0 elf usr/lib/libedit.so.0.0.77
+f 0755 0:0 elf usr/lib/libjemalloc.so.2
+l usr/lib/liblzma.so.5 -> liblzma.so.5.8.3
+f 0755 0:0 elf usr/lib/liblzma.so.5.8.3
+l usr/lib/libncursesw.so.6 -> libncursesw.so.6.6
+f 0755 0:0 elf usr/lib/libncursesw.so.6.6
+l usr/lib/libpcre2-8.so.0 -> libpcre2-8.so.0.15.0
+f 0755 0:0 elf usr/lib/libpcre2-8.so.0.15.0
+l usr/lib/libunwind.so.8 -> libunwind.so.8.2.0
+f 0755 0:0 elf usr/lib/libunwind.so.8.2.0
+l usr/lib/libvarnishapi.so -> libvarnishapi.so.3
+l usr/lib/libvarnishapi.so.3 -> libvarnishapi.so.3.1.0
+f 0755 0:0 elf usr/lib/libvarnishapi.so.3.1.0
+f 0755 0:0 elf usr/lib/varnish/vmods/libvmod_blob.so
+f 0755 0:0 elf usr/lib/varnish/vmods/libvmod_cookie.so
+f 0755 0:0 elf usr/lib/varnish/vmods/libvmod_directors.so
+f 0755 0:0 elf usr/lib/varnish/vmods/libvmod_h2.so
+f 0755 0:0 elf usr/lib/varnish/vmods/libvmod_proxy.so
+f 0755 0:0 elf usr/lib/varnish/vmods/libvmod_purge.so
+f 0755 0:0 elf usr/lib/varnish/vmods/libvmod_std.so
+f 0755 0:0 elf usr/lib/varnish/vmods/libvmod_unix.so
+f 0755 0:0 elf usr/lib/varnish/vmods/libvmod_vtc.so
+f 0755 0:0 elf usr/local/bin/init
+f 0755 0:0 elf usr/sbin/varnishd
+
+count 2 etc/ssl/
+count 338 usr/include/
+count 1 usr/lib/tcc/
+count 624 usr/share/
+count 2 var/

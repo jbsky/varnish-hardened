@@ -4,7 +4,6 @@
 // Usage:
 //
 //	init --healthcheck      run Docker/k8s healthcheck (exit 0/1)
-//	init --setup-dirs       create runtime directories (build-time)
 //	init [ARGS...]          entrypoint: exec varnishd with args
 package main
 
@@ -13,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -33,12 +31,6 @@ func main() {
 		switch os.Args[1] {
 		case "--healthcheck":
 			os.Exit(healthcheck())
-		case "--setup-dirs":
-			if err := setupDirs(); err != nil {
-				fmt.Fprintf(os.Stderr, "[init][ERROR] setup-dirs: %v\n", err)
-				os.Exit(1)
-			}
-			return
 		case "--export-tools":
 			dest := "/tools"
 			if len(os.Args) > 2 {
@@ -61,40 +53,12 @@ func main() {
 // Setup directories
 // ---------------------------------------------------------------------------
 
-func setupDirs() error {
-	dirs := []struct {
-		path string
-		mode os.FileMode
-		uid  int
-		gid  int
-	}{
-		{"/var/lib/varnish", 0755, varnishUID, varnishGID},
-		{"/var/log/varnish", 0755, varnishUID, varnishGID},
-		{"/etc/varnish", 0755, varnishUID, varnishGID},
-		{"/tmp", 01777, 0, 0},
-	}
-	for _, d := range dirs {
-		fmt.Printf("[init] mkdir %s (mode=%04o uid=%d gid=%d)\n", d.path, d.mode, d.uid, d.gid)
-		if err := os.MkdirAll(d.path, d.mode); err != nil {
-			return fmt.Errorf("mkdir %s: %w", d.path, err)
-		}
-		if err := os.Chmod(d.path, d.mode); err != nil {
-			return fmt.Errorf("chmod %s: %w", d.path, err)
-		}
-		if err := os.Chown(d.path, d.uid, d.gid); err != nil {
-			return fmt.Errorf("chown %s: %w", d.path, err)
-		}
-	}
-	fmt.Println("[init] setup-dirs complete")
-	return nil
-}
-
 // ---------------------------------------------------------------------------
 // Healthcheck: HTTP GET /healthcheck on varnish
 // ---------------------------------------------------------------------------
 
 func healthcheck() int {
-	url := envGet("VARNISH_HEALTH_URL", healthURL)
+	url := env("VARNISH_HEALTH_URL", healthURL)
 	client := &http.Client{Timeout: 3 * time.Second}
 
 	resp, err := client.Get(url)
@@ -129,12 +93,12 @@ func entrypoint() error {
 	}
 
 	// Default: build varnishd command from env vars
-	vclFile := envGet("VARNISH_VCL", defaultVCL)
-	cacheSize := envGet("VARNISH_SIZE", defaultSize)
-	httpPort := envGet("VARNISH_HTTP_PORT", "8080")
-	proxyPort := envGet("VARNISH_PROXY_PORT", "8443")
+	vclFile := env("VARNISH_VCL", defaultVCL)
+	cacheSize := env("VARNISH_SIZE", defaultSize)
+	httpPort := env("VARNISH_HTTP_PORT", "8080")
+	proxyPort := env("VARNISH_PROXY_PORT", "8443")
 
-	if !fileExists(vclFile) {
+	if !exists(vclFile) {
 		return fmt.Errorf("VCL file not found: %s", vclFile)
 	}
 
@@ -160,7 +124,7 @@ func entrypoint() error {
 	}
 
 	log("Varnish %s | VCL=%s | cache=%s | http=:%s | proxy=:%s",
-		envGet("VARNISH_VERSION", "?"), vclFile, cacheSize, httpPort, proxyPort)
+		env("VARNISH_VERSION", "?"), vclFile, cacheSize, httpPort, proxyPort)
 	log("Workdir: %s", workdir)
 	log("Starting: %s", strings.Join(args, " "))
 
@@ -171,25 +135,30 @@ func entrypoint() error {
 // Helpers
 // ---------------------------------------------------------------------------
 
-func envGet(key, fallback string) string {
+func env(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return fallback
 }
 
-func envGetInt(key string, fallback int) int {
-	if v := os.Getenv(key); v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			return i
-		}
-	}
-	return fallback
-}
-
-func fileExists(path string) bool {
+func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// writeOK dit si un repertoire accepte reellement une ecriture. mkdir + chmod
+// + chown peuvent tous reussir sur un point de montage en lecture seule :
+// seule une ecriture le prouve.
+func writeOK(dir string) bool {
+	tmp, err := os.CreateTemp(dir, ".write-test-*")
+	if err != nil {
+		return false
+	}
+	name := tmp.Name()
+	tmp.Close()
+	os.Remove(name)
+	return true
 }
 
 func execProcess(args []string) error {
@@ -227,7 +196,7 @@ func exportTools(dest string) error {
 	}
 
 	for _, src := range tools {
-		if !fileExists(src) {
+		if !exists(src) {
 			log("skip %s (not found)", src)
 			continue
 		}

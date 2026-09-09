@@ -13,7 +13,7 @@ Image Docker Varnish Cache <!--v:varnish-hardened-->8.0.0<!--/v--> hardenee (FRO
 | FROM scratch | Zero shell, zero package manager, zero attack surface |
 | Non-root | UID 6081 (varnish:nogroup) |
 | Compiler hardening | RELRO, PIE, SSP, FORTIFY_SOURCE, NX |
-| Go static init | Healthcheck HTTP + setup-dirs (no shell) |
+| Go static init | Entrypoint + healthcheck HTTP (no shell) |
 | tini PID 1 | Signal forwarding + zombie reaping |
 | TCC embarque | Tiny C Compiler pour compilation VCL at runtime |
 | PROXY protocol | Support natif (port 8443) pour real client IP |

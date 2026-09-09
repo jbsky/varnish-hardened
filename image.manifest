@@ -1,4 +1,4 @@
-# image-manifest v1
+# image-manifest v2
 # image : varnish-hardened
 # genere par scripts/image-manifest.py -- ne pas editer a la main
 
@@ -23,20 +23,20 @@ f 0755 0:0 elf usr/bin/varnishtop
 f 0644 0:0 elf usr/lib/crti.o
 f 0644 0:0 elf usr/lib/crtn.o
 l usr/lib/libc.so -> ../../lib/ld-musl-x86_64.so.1
-l usr/lib/libedit.so.0 -> libedit.so.0.0.77
-f 0755 0:0 elf usr/lib/libedit.so.0.0.77
+l usr/lib/libedit.so.0 -> libedit.so.0.<version>
+f 0755 0:0 elf usr/lib/libedit.so.0.<version>
 f 0755 0:0 elf usr/lib/libjemalloc.so.2
-l usr/lib/liblzma.so.5 -> liblzma.so.5.8.3
-f 0755 0:0 elf usr/lib/liblzma.so.5.8.3
-l usr/lib/libncursesw.so.6 -> libncursesw.so.6.6
-f 0755 0:0 elf usr/lib/libncursesw.so.6.6
-l usr/lib/libpcre2-8.so.0 -> libpcre2-8.so.0.15.0
-f 0755 0:0 elf usr/lib/libpcre2-8.so.0.15.0
-l usr/lib/libunwind.so.8 -> libunwind.so.8.2.0
-f 0755 0:0 elf usr/lib/libunwind.so.8.2.0
+l usr/lib/liblzma.so.5 -> liblzma.so.5.<version>
+f 0755 0:0 elf usr/lib/liblzma.so.5.<version>
+l usr/lib/libncursesw.so.6 -> libncursesw.so.6.<version>
+f 0755 0:0 elf usr/lib/libncursesw.so.6.<version>
+l usr/lib/libpcre2-8.so.0 -> libpcre2-8.so.0.<version>
+f 0755 0:0 elf usr/lib/libpcre2-8.so.0.<version>
+l usr/lib/libunwind.so.8 -> libunwind.so.8.<version>
+f 0755 0:0 elf usr/lib/libunwind.so.8.<version>
 l usr/lib/libvarnishapi.so -> libvarnishapi.so.3
-l usr/lib/libvarnishapi.so.3 -> libvarnishapi.so.3.1.0
-f 0755 0:0 elf usr/lib/libvarnishapi.so.3.1.0
+l usr/lib/libvarnishapi.so.3 -> libvarnishapi.so.3.<version>
+f 0755 0:0 elf usr/lib/libvarnishapi.so.3.<version>
 f 0755 0:0 elf usr/lib/varnish/vmods/libvmod_blob.so
 f 0755 0:0 elf usr/lib/varnish/vmods/libvmod_cookie.so
 f 0755 0:0 elf usr/lib/varnish/vmods/libvmod_directors.so

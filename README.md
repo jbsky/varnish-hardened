@@ -164,4 +164,13 @@ cosign verify ghcr.io/jbsky/varnish-hardened:8.0.0.30 \
 
 ## Licence
 
-MPL-2.0 (Varnish Cache) / MIT (init.go, scripts)
+Le contenu de ce depot -- Dockerfile, `init.go`, scripts et chaine CI -- est
+sous **Apache-2.0**, voir [`LICENSE`](LICENSE). Copyright 2026 jbsky.
+
+Le logiciel embarque dans l'image garde la sienne : **Varnish Cache est sous
+BSD-2-Clause**, et les autres composants compiles depuis les sources gardent
+celle de leur amont. Les deux plans ne se melangent pas -- `init.go` est un
+programme distinct, qui execute Varnish sans etre lie a ses bibliotheques.
+
+Contributions : voir [`CONTRIBUTING.md`](CONTRIBUTING.md), un `Signed-off-by`
+est demande.

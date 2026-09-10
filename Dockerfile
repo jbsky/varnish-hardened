@@ -340,11 +340,14 @@ RUN ln -sf busybox /rootfs/bin/sh \
 FROM scratch
 
 ARG VARNISH_VERSION
+# `image.licenses` decrit le LOGICIEL EMBARQUE, pas ce depot (Apache-2.0, cf.
+# LICENSE). Varnish Cache est en BSD-2-Clause ; TCC, embarque parce que
+# Varnish compile sa VCL a chaud, est en LGPL-2.1-or-later -- il manquait.
 LABEL org.opencontainers.image.title="varnish-hardened" \
       org.opencontainers.image.description="Varnish Cache ${VARNISH_VERSION} hardened (Tier Platine: FROM scratch, Go init, tini PID 1)" \
       org.opencontainers.image.vendor="jbsky" \
       org.opencontainers.image.source="https://github.com/jbsky/varnish-hardened" \
-      org.opencontainers.image.licenses="BSD-2-Clause" \
+      org.opencontainers.image.licenses="BSD-2-Clause AND LGPL-2.1-or-later" \
       security.hardening.tier="platine"
 
 # passwd/group for non-root

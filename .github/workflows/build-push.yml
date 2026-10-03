@@ -79,6 +79,18 @@ jobs:
           python3 -m unittest discover -s scripts -p 'test_versions_build_args.py' -v
           ./scripts/versions-build-args.py --check
 
+      # La copie locale (celle de `make build` et de l'etape ci-dessus) doit etre
+      # la version de hardened-ci epinglee par l'action : quand Dependabot bumpe
+      # le SHA, ce lint echoue tant que la copie n'a pas suivi.
+      - name: Copie locale du controle = hardened-ci epingle
+        run: |
+          set -euo pipefail
+          ref=$(grep -m1 -oP 'jbsky/hardened-ci/versions@\K[0-9a-f]{40}' .github/workflows/build-push.yml)
+          for f in versions-build-args.py test_versions_build_args.py; do
+            curl -fsSL "https://raw.githubusercontent.com/jbsky/hardened-ci/${ref}/scripts/${f}" | cmp - "scripts/${f}" \
+              || { echo "::error::scripts/${f} differe de jbsky/hardened-ci@${ref} : la recopier depuis hardened-ci"; exit 1; }
+          done
+
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -136,14 +148,9 @@ jobs:
       # memes build-args, generes depuis versions.json. Le generateur refuse
       # une valeur absente, nulle ou vide (dont .varnish_sha256 : sans elle le
       # build n'aurait plus de controle d'integrite).
-      - name: Build-args from versions.json
+      - name: Build-args depuis versions.json
         id: build-args
-        run: |
-          {
-            echo 'build-args<<EOF'
-            ./scripts/versions-build-args.py
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
+        uses: jbsky/hardened-ci/versions@28bf7b0bb40bd7f8e2eaae64534b053e1976bae0 # v0.7.0
 
       - name: Make room for local tarball export (PR only)
         if: env.PUBLISH != 'true'

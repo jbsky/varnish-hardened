@@ -12,4 +12,3 @@ docker-compose*.yml
 Makefile
 .hadolint.yaml
 .github/
-.gitlab-ci.yml

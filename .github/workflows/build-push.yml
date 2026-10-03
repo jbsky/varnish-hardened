@@ -70,6 +70,15 @@ jobs:
       - name: Vendored scripts unchanged
         run: sha256sum -c scripts/VENDORED.sha256
 
+      # versions.json est la seule source des versions du build : aucune
+      # valeur par defaut d'ARG, aucune copie (compose, Makefile), chaque
+      # build-push-action recoit les build-args generes. Le test unitaire
+      # prouve que le controle attrape chaque derive.
+      - name: Versions -- source unique
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_versions_build_args.py' -v
+          ./scripts/versions-build-args.py --check
+
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -123,18 +132,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve Varnish version
-        id: versions
+      # Les deux builds ci-dessous (image et stage prep) compilent builder :
+      # memes build-args, generes depuis versions.json. Le generateur refuse
+      # une valeur absente, nulle ou vide (dont .varnish_sha256 : sans elle le
+      # build n'aurait plus de controle d'integrite).
+      - name: Build-args from versions.json
+        id: build-args
         run: |
-          set -euo pipefail
-          VARNISH_VER=$(jq -r '.varnish' versions.json)
-          VARNISH_SHA=$(jq -r '.varnish_sha256' versions.json)
-          ALPINE_VER=$(jq -r '.alpine' versions.json)
-          test -n "$VARNISH_SHA" -a "$VARNISH_SHA" != "null" \
-            || { echo "versions.json has no .varnish_sha256 -- the build would have no integrity check" >&2; exit 1; }
-          echo "varnish=${VARNISH_VER}" >> "$GITHUB_OUTPUT"
-          echo "varnish_sha256=${VARNISH_SHA}" >> "$GITHUB_OUTPUT"
-          echo "alpine=${ALPINE_VER}" >> "$GITHUB_OUTPUT"
+          {
+            echo 'build-args<<EOF'
+            ./scripts/versions-build-args.py
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Make room for local tarball export (PR only)
         if: env.PUBLISH != 'true'
@@ -150,10 +159,7 @@ jobs:
           tags: ${{ env.PUBLISH != 'true' && format('localhost/{0}:latest', env.IMAGE_NAME) || '' }}
           sbom: ${{ env.PUBLISH }}
           provenance: ${{ env.PUBLISH == 'true' && 'mode=max' || 'false' }}
-          build-args: |
-            VARNISH_VERSION=${{ steps.versions.outputs.varnish }}
-            VARNISH_SHA256=${{ steps.versions.outputs.varnish_sha256 }}
-            ALPINE_VERSION=${{ steps.versions.outputs.alpine }}
+          build-args: ${{ steps.build-args.outputs.build-args }}
           cache-from: type=gha,scope=varnish
           cache-to: type=gha,mode=max,scope=varnish
           # Le stage `prep` porte les paquets Alpine qui finissent dans
@@ -187,10 +193,7 @@ jobs:
           load: true
           tags: ${{ env.IMAGE_NAME }}-prep:scan
           no-cache-filters: prep
-          build-args: |
-            VARNISH_VERSION=${{ steps.versions.outputs.varnish }}
-            VARNISH_SHA256=${{ steps.versions.outputs.varnish_sha256 }}
-            ALPINE_VERSION=${{ steps.versions.outputs.alpine }}
+          build-args: ${{ steps.build-args.outputs.build-args }}
           cache-from: type=gha,scope=varnish
 
       - name: Trivy scan prep stage (report CRITICAL+HIGH)

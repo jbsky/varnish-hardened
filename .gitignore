@@ -1,2 +1,3 @@
 init.bin
 varnish-init
+__pycache__/

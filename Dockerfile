@@ -16,22 +16,21 @@ ARG VARNISH_VERSION
 # its own: a hash that lags its version fails the build closed, which is the
 # intended behaviour but only if the two always move together.
 ARG VARNISH_SHA256
-# ALPINE_VERSION kept for check-versions.sh/versions.json reference only --
-# the FROM lines below pin tag+digest together as a literal so a version
-# bump requires deliberately re-resolving the digest, not a silent drift
-# if this ARG changes without the pin being updated to match.
-ARG ALPINE_VERSION=3.24
+# Pas d'ARG ALPINE_VERSION : la base est epinglee tag@sha256 en dur sur les
+# FROM, et `scripts/versions-build-args.py --check` compare ce tag a .alpine.
 # TCC ships no release tarball -- upstream publishes the `mob` branch only,
 # so this build used to compile whatever mob HEAD happened to be that day:
 # not reproducible, and a silent path for upstream changes into a compiler
 # that ends up inside the published image. Pinned to an exact commit; bump
-# it deliberately (`git ls-remote https://repo.or.cz/tinycc.git mob`).
-ARG TCC_COMMIT=2ba12e83b3599ca8f5d50c179fe5138fe956f0c9
+# it deliberately (`git ls-remote https://repo.or.cz/tinycc.git mob`) in
+# versions.json (.tcc_commit), like every other version.
+ARG TCC_COMMIT
 
 # jemalloc est compile depuis les sources, pas installe via apk : voir la note
 # devant sa compilation dans le stage builder.
-ARG JEMALLOC_VERSION=5.3.1
-ARG JEMALLOC_SHA256=3826bc80232f22ed5c4662f3034f799ca316e819103bdc7bb99018a421706f92
+# Versions dans versions.json (.jemalloc, .jemalloc_sha256), sans valeur ici.
+ARG JEMALLOC_VERSION
+ARG JEMALLOC_SHA256
 
 # --- Stage 1: Build Varnish + TCC from source --------------------------
 FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS builder
@@ -39,13 +38,16 @@ FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec4
 ARG VARNISH_VERSION
 ARG VARNISH_SHA256
 ARG TCC_COMMIT
+ARG JEMALLOC_VERSION
+ARG JEMALLOC_SHA256
 ENV CFLAGS="-O2 -fstack-protector-strong -fstack-clash-protection -fPIE -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security" \
     CXXFLAGS="-O2 -fstack-protector-strong -fstack-clash-protection -fPIE -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security" \
     LDFLAGS="-Wl,-z,relro,-z,now,-z,noexecstack -pie"
 
 # Fail before the (long) TCC build rather than after it
-RUN test -n "${VARNISH_VERSION}" -a -n "${VARNISH_SHA256}" \
-    || { echo "VARNISH_VERSION and VARNISH_SHA256 build-args are required: jq -r '.varnish, .varnish_sha256' versions.json" >&2; exit 1; }
+RUN test -n "${VARNISH_VERSION}" -a -n "${VARNISH_SHA256}" -a -n "${TCC_COMMIT}" \
+         -a -n "${JEMALLOC_VERSION}" -a -n "${JEMALLOC_SHA256}" \
+    || { echo "build-args requis depuis versions.json : make build, ou docker build \$(scripts/versions-build-args.py --docker) ." >&2; exit 1; }
 
 # Proxy-aware: HTTP repos for SSL Bump compatibility
 RUN sed -i 's|https://|http://|g' /etc/apk/repositories

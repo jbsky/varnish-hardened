@@ -2,11 +2,9 @@
 
 DC := docker compose
 
-# versions.json is the single source of truth for the Varnish version --
-# the Dockerfile has no default, so it has to be passed in.
-VARNISH_VERSION := $(shell jq -r .varnish versions.json)
-VARNISH_SHA256  := $(shell jq -r .varnish_sha256 versions.json)
-export VARNISH_VERSION VARNISH_SHA256
+# versions.json est la seule source des versions : le Dockerfile n'a aucune
+# valeur par defaut, toutes passent par scripts/versions-build-args.py (qui
+# refuse une valeur absente, nulle ou vide).
 
 help:
 	@echo "Cibles disponibles :"
@@ -20,12 +18,9 @@ help:
 	@echo "  make clean   - Supprime volumes + image"
 
 build:
-	@test -n "$(VARNISH_VERSION)" -a "$(VARNISH_VERSION)" != "null" \
-	  || { echo "versions.json: .varnish illisible"; exit 1; }
-	@test -n "$(VARNISH_SHA256)" -a "$(VARNISH_SHA256)" != "null" \
-	  || { echo "versions.json: .varnish_sha256 illisible"; exit 1; }
-	@echo "Build Varnish $(VARNISH_VERSION) (versions.json)"
-	DOCKER_BUILDKIT=1 $(DC) build --pull
+	@args=$$(./scripts/versions-build-args.py --docker) \
+	  && echo "Build depuis versions.json : $$args" \
+	  && DOCKER_BUILDKIT=1 $(DC) build --pull $$args
 
 up:
 	$(DC) up -d

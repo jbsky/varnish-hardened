@@ -33,7 +33,7 @@ ARG JEMALLOC_VERSION
 ARG JEMALLOC_SHA256
 
 # --- Stage 1: Build Varnish + TCC from source --------------------------
-FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS builder
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS builder
 
 ARG VARNISH_VERSION
 ARG VARNISH_SHA256
@@ -181,7 +181,7 @@ COPY go.mod init.go ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags='-s -w' -trimpath -o /init .
 
 # --- Stage 3: Prep — assemble runtime filesystem -----------------------
-FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS prep
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS prep
 
 # Proxy-aware: HTTP repos
 RUN sed -i 's|https://|http://|g' /etc/apk/repositories

@@ -186,7 +186,8 @@ RUN sed -i 's|https://|http://|g' /etc/apk/repositories
 
 # Runtime libraries only (no compilers, no package manager in final)
 RUN --mount=type=cache,target=/var/cache/apk \
-    apk add --no-cache \
+    apk upgrade --no-cache \
+    && apk add --no-cache \
         pcre2 libedit ncurses-libs libunwind \
         libgcc \
         musl-dev \

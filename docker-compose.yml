@@ -16,14 +16,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        # Read from versions.json by `make build` -- never hardcoded here.
-        # Deliberately `:-` and not `:?`: compose interpolates build.args even
-        # for `up --no-build`, `logs` and `down`, so a hard requirement here
-        # broke the CI functional-test job. The enforcement lives in the
-        # Dockerfile, which refuses to build on an empty value.
-        VARNISH_VERSION: ${VARNISH_VERSION:-}
-        VARNISH_SHA256: ${VARNISH_SHA256:-}
+      # Pas de build.args : `make build` passe --build-arg depuis versions.json
+      # (scripts/versions-build-args.py --docker). Un `docker compose build`
+      # nu echoue au garde du Dockerfile au lieu de construire a vide.
     image: localhost/varnish-hardened:latest
     <<: *common-security
     ports:

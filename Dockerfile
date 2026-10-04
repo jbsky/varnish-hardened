@@ -174,7 +174,7 @@ RUN mkdir -p /out/usr/include/varnish \
     && cp -a include/*.h /out/usr/include/varnish/ 2>/dev/null || true
 
 # --- Stage 2: Go init binary -------------------------------------------
-FROM golang:1.26-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS gobuilder
+FROM golang:1.27-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS gobuilder
 
 WORKDIR /src
 COPY go.mod init.go ./

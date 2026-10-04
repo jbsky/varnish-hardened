@@ -151,7 +151,8 @@ Le Go init effectue un HTTP GET sur `/__health` (port 8080) :
 ```bash
 # Verifier la signature cosign (OIDC keyless)
 cosign verify ghcr.io/jbsky/varnish-hardened:8.0.0.36 \
-  --certificate-identity-regexp '^https://github.com/jbsky/varnish-hardened/' \
+  --certificate-identity-regexp '^https://github.com/(jbsky/varnish-hardened|jbsky/hardened-ci)/' \
+  --certificate-github-workflow-repository jbsky/varnish-hardened \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 

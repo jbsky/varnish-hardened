@@ -15,8 +15,8 @@ CVEs, several High severity (`GO-2026-4986`, `GO-2026-4918`, `GO-2026-4601`,
 `GO-2026-4870`, `GO-2026-4947`, `GO-2026-4971`, `GO-2026-5038`, and others), all
 already fixed in the current `8.0.0` build.
 
-Fixed by `registry-cleanup.yml` (`scripts/prune-registry-tags.sh` for Docker Hub,
-`scripts/prune-ghcr-tags.sh` for GHCR), called as a job from `build-push.yml` after
+Fixed by `registry-cleanup.yml` (`prune-registry-tags.sh` (jbsky/hardened-ci) for Docker Hub,
+`prune-ghcr-tags.sh` (jbsky/hardened-ci) for GHCR), called as a job from `build-push.yml` after
 every push, and directly `workflow_dispatch`-able. Keeps the last 3 semver tags +
 `:latest`. Only ever deletes a package version by its own named tag -- untagged
 manifest-list children, attestations, and cosign signatures are left alone.

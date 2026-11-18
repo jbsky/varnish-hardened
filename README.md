@@ -2,30 +2,49 @@
 
 [![Build](https://github.com/jbsky/varnish-hardened/actions/workflows/build-push.yml/badge.svg)](https://github.com/jbsky/varnish-hardened/actions/workflows/build-push.yml)
 [![Docker Hub](https://img.shields.io/docker/v/jbsky/varnish-hardened?sort=semver&label=Docker%20Hub)](https://hub.docker.com/r/jbsky/varnish-hardened)
-[![Hardening](https://img.shields.io/badge/hardening-platine-blueviolet)](https://github.com/jbsky/varnish-hardened#security--verification)
+[![Hardening](https://img.shields.io/badge/hardening-platine-blueviolet)](https://github.com/jbsky/varnish-hardened#hardening)
 
-Image Docker Varnish Cache <!--v:varnish-hardened-->8.0.0<!--/v--> hardenee (FROM scratch, Go init, tini PID 1), optimisee pour deploiement K3s avec shard director horizontal scaling.
+Varnish Cache <!--v:varnish-hardened-->8.0.0<!--/v--> built from source, in a `FROM scratch`
+image: no shell, no package manager, no OS. Only `varnishd`, the Tiny C
+Compiler it needs for VCL, their libraries, `tini` and a static Go init --
+about 18 MB. Meant for a K3s deployment scaled horizontally with the shard
+director.
 
-## Features
+## What is built
 
-| Feature | Detail |
-|---------|--------|
-| FROM scratch | Zero shell, zero package manager, zero attack surface |
-| Non-root | UID 6081 (varnish:nogroup) |
-| Compiler hardening | RELRO, PIE, SSP, FORTIFY_SOURCE, NX |
-| Go static init | Entrypoint + healthcheck HTTP (no shell) |
-| tini PID 1 | Signal forwarding + zombie reaping |
-| TCC embarque | Tiny C Compiler pour compilation VCL at runtime |
-| PROXY protocol | Support natif (port 8443) pour real client IP |
-| Shard director | Scale horizontal natif via `directors.shard()` |
+- **Varnish Cache**: upstream release tarball, verified against its sha256
+  pinned in [`versions.json`](versions.json).
+- **TCC** (Tiny C Compiler): Varnish compiles VCL to C, then to a shared
+  object, **at runtime** -- it needs a C compiler, and GCC or Clang are far too
+  heavy for `FROM scratch`. TCC (~200 KB) is enough for the shared objects
+  Varnish generates. Upstream publishes no release tarball, only the `mob`
+  branch: it is built from a commit pinned in `versions.json`.
+- **jemalloc**: built from source, sha256-verified.
+- **PROXY protocol**: a second listener (port 8443) receives the real client
+  IP from the load balancer.
+
+## Hardening
+
+Tier **platine** (OCI label `security.hardening.tier`): a `FROM scratch` image
+with no shell and no package manager, a non-root user, a static Go init behind
+`tini` as PID 1, and binaries built with hardening flags.
+
+- Non-root user `6081:65534` (`varnish:nogroup`), no capability.
+- Compiler flags: PIE, full RELRO, `-fstack-protector-strong`,
+  `-fstack-clash-protection`, `_FORTIFY_SOURCE=2`, non-executable stack.
+- Libraries copied from a dependency closure resolved at build time
+  (`lddtree`), never `/lib` or `/usr/lib` wholesale.
+- The init builds the `varnishd` command line from the environment (no shell
+  script) and serves as the healthcheck.
 
 ## Tags
 
-Trois tags par image : `latest` (dernier build de `main`), la version amont
-seule, et la version amont suffixee d'un **compteur de revision**. Les deux
-premiers sont **reecrits en place** a chaque rebuild -- bump Alpine, correctif
-CVE, changement de config -- et le build qu'ils designaient devient alors
-inaccessible. **En production, epinglez le tag qui porte le compteur.**
+Every image is published under three tags: `latest` (last build of `main`),
+the upstream version alone, and the upstream version followed by a **revision
+counter**. The first two are **overwritten in place** on every rebuild (Alpine
+update, CVE fix, configuration change), and the build they pointed to can no
+longer be pulled by them. **In production, pin the tag that carries the
+counter.**
 
 <!-- BEGIN:tags (genere par la CI -- ne pas editer a la main) -->
 | Image | Version amont | Tag immuable a epingler |
@@ -33,145 +52,145 @@ inaccessible. **En production, epinglez le tag qui porte le compteur.**
 | `jbsky/varnish-hardened` | `8.0.0` | `8.0.0.48` |
 <!-- END:tags -->
 
-Ce tableau, les versions citees dans le texte et les tags qui apparaissent
-dans les exemples sont tous rendus par `update-readme-tags.sh` (jbsky/hardened-ci) apres
-chaque publication -- ne rien editer a la main.
+This table, the versions quoted in the text and the tags in the examples are
+rendered by `update-readme-tags.sh` ([hardened-ci](https://github.com/jbsky/hardened-ci))
+after each publication: do not edit them by hand.
 
-Le compteur compte les commits qui touchent les inputs declares (`Dockerfile`, `init.go`, `go.mod`, `conf/`, `scripts/`, `versions.json`)
-depuis le dernier changement de version amont, et repart a `0` a chaque nouvelle
-version amont. Un commit qui ne touche que `.github/` ne l'incremente pas.
+The counter counts the commits that touch the image inputs (the `revision`
+list of [`.github/hardened-ci.json`](.github/hardened-ci.json)) since the last
+upstream version change, and restarts at `0` with each new upstream version. A
+commit that only touches `.github/` does not increment it.
 
-Les deux registres, `docker.io` et `ghcr.io`, publient les memes tags avec le
-meme digest.
+`docker.io` and `ghcr.io` publish the same tags with the same digest, for
+`linux/amd64`. Each registry keeps the last six immutable tags of an image, so
+that superseded builds do not stay pullable: move your pin forward.
 
-L'image finale fait ~18 MB (`FROM scratch`).
+`version-watch` checks upstream daily, bumps `versions.json` (version and
+sha256) and republishes.
 
-## Usage rapide
+## Usage
 
 ```bash
-cp .env.example .env    # (optionnel)
-make build              # Build l'image
-make up                 # Demarre Varnish
-make test               # Smoke tests (healthcheck + cache hit)
-make scan               # Trivy vulnerability scan
-make down               # Arrete
+docker run -d --name varnish \
+  --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+  --tmpfs /var/lib/varnish:nodev,nosuid,exec,size=256m,mode=1777 \
+  --tmpfs /tmp:nodev,nosuid,noexec,size=16m,mode=1777 \
+  -v ./default.vcl:/etc/varnish/default.vcl:ro \
+  -p 8080:8080 -p 8443:8443 \
+  jbsky/varnish-hardened:8.0.0.48
 ```
 
-## Configuration
+- The image ships [`conf/default.vcl`](conf/default.vcl), a test VCL with no
+  real backend; mount your own on `/etc/varnish/default.vcl`.
+- **`/var/lib/varnish` must allow `exec`**: `varnishd` maps an executable
+  shared-memory log in its working directory and refuses to start on a
+  `noexec` mount. `mode=1777` is needed too, or the tmpfs belongs to root and
+  uid `6081` cannot write to it.
+- **Healthcheck**: the init sends `GET /__health` on port 8080, which your VCL
+  must answer (the shipped one does), or another URL through
+  `VARNISH_HEALTH_URL`. It also serves the Kubernetes liveness and readiness
+  probes.
 
-| Variable d'env | Default | Description |
-|---------------|---------|-------------|
-| `VARNISH_VCL` | `/etc/varnish/default.vcl` | Chemin du fichier VCL |
-| `VARNISH_SIZE` | `256M` | Taille du cache (malloc) |
-| `VARNISH_HTTP_PORT` | `8080` | Port HTTP |
-| `VARNISH_PROXY_PORT` | `8443` | Port PROXY protocol |
-| `VARNISH_OPTS` | (vide) | Arguments supplementaires pour varnishd |
+### Configuration
 
-## Scale horizontal : shard director
+| Environment variable | Default | Description |
+|---|---|---|
+| `VARNISH_VCL` | `/etc/varnish/default.vcl` | VCL file |
+| `VARNISH_SIZE` | `256M` | Cache size (`malloc`) |
+| `VARNISH_HTTP_PORT` | `8080` | HTTP listener |
+| `VARNISH_PROXY_PORT` | `8443` | PROXY protocol listener |
+| `VARNISH_OPTS` | (empty) | Extra `varnishd` arguments |
 
-L'image est concue pour le scale horizontal via le **shard director** de Varnish.
+## Horizontal scaling: shard director
 
-### Principe
+The image is designed for horizontal scaling through Varnish's **shard
+director**.
 
 ```
-                     Service K3s (round-robin)
+                     K3s Service (round-robin)
                     /          |          \
               varnish-0   varnish-1   varnish-2  ...  varnish-N
                     \          |          /
                      Shard director (SHA256)
-                     Chaque URL = 1 seul owner
+                     each URL = one single owner
 ```
 
-Chaque pod recoit les requetes en round-robin. Le VCL calcule le shard owner pour l'URL demandee :
-- Si le pod courant EST le owner : il cache localement et sert
-- Sinon : il forward au peer owner (header `X-Varnish-Peer`)
+Each pod receives requests round-robin. The VCL computes the shard owner of
+the requested URL:
 
-### Scaling dynamique
+- if the current pod IS the owner, it caches locally and serves;
+- otherwise, it forwards to the owner peer (header `X-Varnish-Peer`).
 
-Le nombre de replicas n'est **pas limite** -- il suffit de :
-1. Scaler le StatefulSet : `kubectl scale statefulset varnish --replicas=N`
-2. Regenerer le VCL avec N backends peer (via l'init-container template)
-3. Appliquer le nouveau ConfigMap
+The number of replicas is **not limited**. To scale:
 
-L'init-container genere le VCL dynamiquement en iterant sur les replicas du StatefulSet. Le placeholder `__MY_ORDINAL__` est remplace par l'index du pod courant.
+1. scale the StatefulSet: `kubectl scale statefulset varnish --replicas=N`;
+2. regenerate the VCL with N peer backends (through the init-container
+   template);
+3. apply the new ConfigMap.
 
-### Headless Service
+The init-container generates the VCL by iterating over the StatefulSet
+replicas; the `__MY_ORDINAL__` placeholder is replaced by the current pod's
+index. Pods find each other through a headless Service:
+`varnish-{i}.varnish-peers.varnish.svc.cluster.local`. These manifests live
+with the deployment, not in this repository.
 
-Les pods se decouvrent via un headless Service :
-```
-varnish-{i}.varnish-peers.varnish.svc.cluster.local
-```
-
-## Architecture du repo
-
-```
-varnish-hardened/
-├── Dockerfile              # Multi-stage 4 stages (builder → gobuilder → prep → scratch)
-├── docker-compose.yml      # Stack hardenee pour dev local
-├── Makefile                # Raccourcis (build, up, test, scan)
-├── versions.json           # Versions trackees (Varnish, Alpine)
-├── go.mod + init.go        # Go static init (healthcheck HTTP + entrypoint)
-├── .hadolint.yaml          # Config linter Dockerfile
-├── conf/
-│   └── default.vcl         # VCL par defaut (backend none)
-├── scripts/
-│   └── test.sh             # Smoke tests (cache hit/miss, healthcheck)
-├── .github/
-│   └── workflows/
-│       ├── build-push.yml      # Build + cosign sign + Trivy + SLSA
-│       ├── version-watch.yml   # Daily upstream version detection
-│       └── security-audit.yml  # Weekly Trivy + Grype
-└── .gitlab-ci.yml          # Mirror CI GitLab homelab
-```
-
-## Build multi-stage
-
-```
-Stage 1: builder      → Compile Varnish + TCC from source (hardening flags)
-Stage 2: gobuilder    → CGO_ENABLED=0 Go static init binary
-Stage 3: prep         → Runtime libs + tini + user 6081 + setcap (aucun)
-Stage 4: FROM scratch → Assemblage final (~18 MB)
-```
-
-### Pourquoi TCC ?
-
-Varnish compile le VCL (Varnish Configuration Language) en C puis en shared object **at runtime**. Il a besoin d'un compilateur C. GCC/Clang sont trop lourds pour FROM scratch.
-
-TCC (Tiny C Compiler) est un compilateur C minimaliste (~200 KB) suffisant pour les shared objects generes par Varnish. Il est compile from source (branche mob) et embarque dans l'image.
-
-## Healthcheck
-
-Le Go init effectue un HTTP GET sur `/__health` (port 8080) :
-- Verifie que Varnish repond et que le VCL est charge
-- Utilise par les probes K8s (liveness + readiness)
-- Timeout 3s, interval 10s, 3 retries
-
-## Security & Verification
+## Build and test
 
 ```bash
-# Verifier la signature cosign (OIDC keyless)
+make build   # build args come from versions.json
+make up      # start the compose stack
+make test    # scripts/test.sh against the running container
+make scan    # Trivy, HIGH and CRITICAL
+```
+
+`scripts/test.sh` checks the healthcheck endpoint, that `TRACE` is refused
+(405) and that no `Via` header leaks.
+
+Versions live only in [`versions.json`](versions.json): the Dockerfile has no
+defaults, `make build` and CI pass them through `scripts/versions-build-args.py`,
+and a bare `docker build` stops at the guard.
+
+## Verification
+
+Images are signed with [cosign](https://github.com/sigstore/cosign) (keyless,
+GitHub OIDC) by the shared [hardened-ci](https://github.com/jbsky/hardened-ci)
+pipeline. The certificate names that workflow and, in an extension, this
+repository: the commands below require both.
+
+```bash
+# ghcr.io
 cosign verify ghcr.io/jbsky/varnish-hardened:8.0.0.48 \
+  --certificate-identity-regexp '^https://github.com/(jbsky/varnish-hardened|jbsky/hardened-ci)/' \
+  --certificate-github-workflow-repository jbsky/varnish-hardened \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+# Docker Hub (the signature is stored on ghcr.io)
+COSIGN_REPOSITORY=ghcr.io/jbsky/varnish-hardened \
+  cosign verify docker.io/jbsky/varnish-hardened:8.0.0.48 \
   --certificate-identity-regexp '^https://github.com/(jbsky/varnish-hardened|jbsky/hardened-ci)/' \
   --certificate-github-workflow-repository jbsky/varnish-hardened \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-## CI/CD
+Each published digest also carries a CycloneDX SBOM (the `prep` stage the
+image is assembled from, plus its Go binaries), attested with cosign, and a
+GitHub SLSA build provenance attestation. The pipeline lints, builds, scans the
+`prep` stage with Trivy, tests the exact digest it is about to publish (image
+manifest, dependency closure, functional tests), then promotes and signs it.
+Base image digests follow upstream daily (`base-watch`), a fixable Alpine
+package CVE triggers a rebuild (`cve-watch`), and the published image is
+audited weekly (`security-audit`: Trivy, Grype, cosign). Audit status and
+documented exceptions: [`SECURITY.md`](SECURITY.md).
 
-3 workflows GitHub Actions :
-- **build-push** : hadolint + build multi-platform + cosign + Trivy + SLSA attestation
-- **version-watch** : cron quotidien, detecte nouvelle version Varnish Cache upstream
-- **security-audit** : hebdomadaire Trivy + Grype, auto-issue si vulnerabilite
+## License
 
-## Licence
+The contents of this repository (Dockerfile, `init.go`, scripts and CI) are
+licensed under **Apache-2.0**, see [`LICENSE`](LICENSE). Copyright 2026 jbsky.
 
-Le contenu de ce depot -- Dockerfile, `init.go`, scripts et chaine CI -- est
-sous **Apache-2.0**, voir [`LICENSE`](LICENSE). Copyright 2026 jbsky.
+The software shipped in the image keeps its own license: **Varnish Cache is
+under BSD-2-Clause**, and the other components built from source keep their
+upstream's. The two never mix: `init.go` is a separate program that executes
+`varnishd` without being linked to its libraries.
 
-Le logiciel embarque dans l'image garde la sienne : **Varnish Cache est sous
-BSD-2-Clause**, et les autres composants compiles depuis les sources gardent
-celle de leur amont. Les deux plans ne se melangent pas -- `init.go` est un
-programme distinct, qui execute Varnish sans etre lie a ses bibliotheques.
-
-Contributions : voir [`CONTRIBUTING.md`](CONTRIBUTING.md), un `Signed-off-by`
-est demande.
+Contributions: see [`CONTRIBUTING.md`](CONTRIBUTING.md); a `Signed-off-by` is
+required.

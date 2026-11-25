@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   prune:
-    uses: jbsky/hardened-ci/.github/workflows/registry-cleanup.yml@fdb4a4afabae12204969c3123bdfc13b50d2808b # v1.4.11
+    uses: jbsky/hardened-ci/.github/workflows/registry-cleanup.yml@9e74542600950c7d867fbced44daa16a14db7099 # v1.4.13
     with:
       images: '["varnish-hardened"]'
     secrets:

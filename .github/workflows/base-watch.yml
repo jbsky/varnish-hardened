@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   watch:
-    uses: jbsky/hardened-ci/.github/workflows/base-watch.yml@fdb4a4afabae12204969c3123bdfc13b50d2808b # v1.4.11
+    uses: jbsky/hardened-ci/.github/workflows/base-watch.yml@9e74542600950c7d867fbced44daa16a14db7099 # v1.4.13
     permissions:
       contents: write
       actions: write
